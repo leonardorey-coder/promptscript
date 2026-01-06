@@ -1,0 +1,9 @@
+{"step":1,"type":"stmt","detail":"ExprStmt","ts":"2026-01-06T06:43:18.684Z"}
+{"step":2,"type":"stmt","detail":"Assign","ts":"2026-01-06T06:43:18.685Z"}
+{"step":3,"type":"stmt","detail":"Assign","ts":"2026-01-06T06:43:18.685Z"}
+{"step":4,"type":"stmt","detail":"Def","ts":"2026-01-06T06:43:18.686Z"}
+{"step":5,"type":"stmt","detail":"ExprStmt","ts":"2026-01-06T06:43:18.686Z"}
+{"step":6,"type":"stmt","detail":"Assign","ts":"2026-01-06T06:43:18.686Z"}
+{"step":6,"type":"llm","input":{"system":null,"user":"next","mock_plan":{"action":"REPORT","args":{"message":"demo ok"},"done":true}},"output":{"done":true,"action":"REPORT","args":{"message":"demo ok"}},"latencyMs":0,"retryCount":0,"ts":"2026-01-06T06:43:18.689Z"}
+{"step":7,"type":"stmt","detail":"If","ts":"2026-01-06T06:43:18.689Z"}
+{"step":8,"type":"stmt","detail":"ExprStmt","ts":"2026-01-06T06:43:18.689Z"}

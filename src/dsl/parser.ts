@@ -3,25 +3,31 @@ import type { Tok } from "./tokenizer";
 
 export function parse(toks: Tok[]): Program {
   let i = 0;
-  const peek = () => toks[i];
-  const at = (t: Tok["t"], v?: string) => {
-    const p = peek();
-    if (p.t !== t) return false;
-    // @ts-expect-error narrow
-    if (v !== undefined && p.v !== v) return false;
+
+  const peek = (): Tok => {
+    const tok = toks[i];
+    if (!tok) throw new Error("Unexpected end of input");
+    return tok;
+  };
+
+  const at = (t: Tok["t"], v?: string): boolean => {
+    const p = toks[i];
+    if (!p || p.t !== t) return false;
+    if (v !== undefined && "v" in p && p.v !== v) return false;
     return true;
   };
-  const eat = (t: Tok["t"], v?: string) => {
+
+  const eat = (t: Tok["t"], v?: string): Tok => {
     const p = peek();
     if (!at(t, v)) {
-      throw new Error(
-        `Parse error: expected ${t}${v ? `(${v})` : ""} got ${p.t}${"v" in p ? `(${(p as any).v})` : ""}`,
-      );
+      const got = "v" in p ? `${p.t}(${p.v})` : p.t;
+      throw new Error(`Parse error: expected ${t}${v ? `(${v})` : ""} got ${got}`);
     }
     i++;
-    return p as any;
+    return p;
   };
-  const skipNewlines = () => {
+
+  const skipNewlines = (): void => {
     while (at("NEWLINE")) i++;
   };
 
@@ -38,18 +44,20 @@ export function parse(toks: Tok[]): Program {
 
   const parseStmt = (): Stmt => {
     const p = peek();
-    if (p.t === "KW" && p.v === "def") return parseDef();
-    if (p.t === "KW" && p.v === "if") return parseIf();
-    if (p.t === "KW" && p.v === "while") return parseWhile();
-    if (p.t === "KW" && p.v === "return") return parseReturn();
-    if (p.t === "KW" && p.v === "break") {
+    if (p.t === "KW" && "v" in p && p.v === "def") return parseDef();
+    if (p.t === "KW" && "v" in p && p.v === "if") return parseIf();
+    if (p.t === "KW" && "v" in p && p.v === "while") return parseWhile();
+    if (p.t === "KW" && "v" in p && p.v === "return") return parseReturn();
+    if (p.t === "KW" && "v" in p && p.v === "break") {
       eat("KW", "break");
       return { type: "Break" };
     }
 
     // assignment? IDENT '=' ...
-    if (p.t === "IDENT" && toks[i + 1]?.t === "SYM" && (toks[i + 1] as any).v === "=") {
-      const name = eat("IDENT").v as string;
+    const next = toks[i + 1];
+    if (p.t === "IDENT" && next && next.t === "SYM" && "v" in next && next.v === "=") {
+      const tok = eat("IDENT");
+      const name = "v" in tok ? String(tok.v) : "";
       eat("SYM", "=");
       const value = parseExpr();
       return { type: "Assign", name, value };
@@ -61,7 +69,6 @@ export function parse(toks: Tok[]): Program {
   };
 
   const parseBlock = (): Stmt[] => {
-    // Expect NEWLINE INDENT ... DEDENT
     eat("NEWLINE");
     eat("INDENT");
     const body: Stmt[] = [];
@@ -76,14 +83,17 @@ export function parse(toks: Tok[]): Program {
 
   const parseDef = (): Stmt => {
     eat("KW", "def");
-    const name = eat("IDENT").v as string;
+    const nameTok = eat("IDENT");
+    const name = "v" in nameTok ? String(nameTok.v) : "";
     eat("SYM", "(");
     const params: string[] = [];
     if (!at("SYM", ")")) {
-      params.push(eat("IDENT").v as string);
+      const pt = eat("IDENT");
+      params.push("v" in pt ? String(pt.v) : "");
       while (at("SYM", ",")) {
         eat("SYM", ",");
-        params.push(eat("IDENT").v as string);
+        const pt2 = eat("IDENT");
+        params.push("v" in pt2 ? String(pt2.v) : "");
       }
     }
     eat("SYM", ")");
@@ -116,14 +126,13 @@ export function parse(toks: Tok[]): Program {
 
   const parseReturn = (): Stmt => {
     eat("KW", "return");
-    // return can be empty (end of line)
     if (at("NEWLINE") || at("DEDENT") || at("EOF")) return { type: "Return", value: null };
     const value = parseExpr();
     return { type: "Return", value };
   };
 
   // -------- Expressions (precedence) --------
-  const parseExpr = () => parseOr();
+  const parseExpr = (): Expr => parseOr();
 
   const parseOr = (): Expr => {
     let left = parseAnd();
@@ -147,7 +156,7 @@ export function parse(toks: Tok[]): Program {
 
   const parseCmp = (): Expr => {
     let left = parseAdd();
-    while ((at("SYM", "==") || at("SYM", "!=")) || at("KW", "in")) {
+    while (at("SYM", "==") || at("SYM", "!=") || at("KW", "in")) {
       if (at("SYM", "==")) {
         eat("SYM", "==");
         const right = parseAdd();
@@ -166,35 +175,58 @@ export function parse(toks: Tok[]): Program {
   };
 
   const parseAdd = (): Expr => {
-    let left = parsePrimary();
+    let left = parsePostfix();
     while (at("SYM", "+")) {
       eat("SYM", "+");
-      const right = parsePrimary();
+      const right = parsePostfix();
       left = { type: "Binary", op: "+", left, right };
     }
     return left;
   };
 
+  // Parse postfix operators: . and []
+  const parsePostfix = (): Expr => {
+    let expr = parsePrimary();
+
+    while (true) {
+      if (at("SYM", ".")) {
+        eat("SYM", ".");
+        const propTok = eat("IDENT");
+        const property = "v" in propTok ? String(propTok.v) : "";
+        expr = { type: "Member", object: expr, property };
+      } else if (at("SYM", "[")) {
+        eat("SYM", "[");
+        const index = parseExpr();
+        eat("SYM", "]");
+        expr = { type: "Index", object: expr, index };
+      } else {
+        break;
+      }
+    }
+
+    return expr;
+  };
+
   const parsePrimary = (): Expr => {
     const p = peek();
 
-    if (p.t === "NUM") {
+    if (p.t === "NUM" && "v" in p) {
       eat("NUM");
       return { type: "Num", value: p.v as number };
     }
-    if (p.t === "STR") {
+    if (p.t === "STR" && "v" in p) {
       eat("STR");
       return { type: "Str", value: p.v as string };
     }
-    if (p.t === "KW" && p.v === "true") {
+    if (p.t === "KW" && "v" in p && p.v === "true") {
       eat("KW", "true");
       return { type: "Bool", value: true };
     }
-    if (p.t === "KW" && p.v === "false") {
+    if (p.t === "KW" && "v" in p && p.v === "false") {
       eat("KW", "false");
       return { type: "Bool", value: false };
     }
-    if (p.t === "KW" && p.v === "null") {
+    if (p.t === "KW" && "v" in p && p.v === "null") {
       eat("KW", "null");
       return { type: "Null" };
     }
@@ -204,13 +236,15 @@ export function parse(toks: Tok[]): Program {
       eat("SYM", "{");
       const pairs: { key: string; value: Expr }[] = [];
       if (!at("SYM", "}")) {
-        const k = eat("STR").v as string;
+        const kt = eat("STR");
+        const k = "v" in kt ? String(kt.v) : "";
         eat("SYM", ":");
         const v = parseExpr();
         pairs.push({ key: k, value: v });
         while (at("SYM", ",")) {
           eat("SYM", ",");
-          const k2 = eat("STR").v as string;
+          const kt2 = eat("STR");
+          const k2 = "v" in kt2 ? String(kt2.v) : "";
           eat("SYM", ":");
           const v2 = parseExpr();
           pairs.push({ key: k2, value: v2 });
@@ -244,8 +278,9 @@ export function parse(toks: Tok[]): Program {
     }
 
     // call or var
-    if (p.t === "IDENT") {
-      const name = eat("IDENT").v as string;
+    if (p.t === "IDENT" && "v" in p) {
+      const nameTok = eat("IDENT");
+      const name = "v" in nameTok ? String(nameTok.v) : "";
       if (at("SYM", "(")) {
         eat("SYM", "(");
         const args: Expr[] = [];
@@ -262,7 +297,8 @@ export function parse(toks: Tok[]): Program {
       return { type: "Var", name };
     }
 
-    throw new Error(`Parse error: unexpected token ${p.t}${"v" in p ? `(${(p as any).v})` : ""}`);
+    const got = "v" in p ? `${p.t}(${p.v})` : p.t;
+    throw new Error(`Parse error: unexpected token ${got}`);
   };
 
   return parseProgram();

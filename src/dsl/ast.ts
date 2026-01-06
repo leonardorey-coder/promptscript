@@ -18,4 +18,6 @@ export type Expr =
   | { type: "Obj"; pairs: { key: string; value: Expr }[] }
   | { type: "Arr"; items: Expr[] }
   | { type: "Call"; name: string; args: Expr[] }
-  | { type: "Binary"; op: "+" | "==" | "!=" | "in" | "and" | "or"; left: Expr; right: Expr };
+  | { type: "Binary"; op: "+" | "==" | "!=" | "in" | "and" | "or"; left: Expr; right: Expr }
+  | { type: "Member"; object: Expr; property: string }
+  | { type: "Index"; object: Expr; index: Expr };

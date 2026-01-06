@@ -49,21 +49,23 @@ const ReportArgs = z.object({
   nextSuggestions: z.array(z.string()).optional(),
 });
 
-const PlanCore = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("READ_FILE"), args: ReadFileArgs }),
-  z.object({ action: z.literal("SEARCH"), args: SearchArgs }),
-  z.object({ action: z.literal("WRITE_FILE"), args: WriteFileArgs }),
-  z.object({ action: z.literal("PATCH_FILE"), args: PatchFileArgs }),
-  z.object({ action: z.literal("RUN_CMD"), args: RunCmdArgs }),
-  z.object({ action: z.literal("ASK_USER"), args: AskUserArgs }),
-  z.object({ action: z.literal("REPORT"), args: ReportArgs }),
-]);
-
-export const PlanSchema = PlanCore.extend({
+// Base fields that every plan has
+const PlanBase = z.object({
   done: z.boolean(),
   confidence: z.number().min(0).max(1).optional(),
   reason: z.string().optional(),
 });
 
+// Each action type extends base with its specific args
+export const PlanSchema = z.discriminatedUnion("action", [
+  PlanBase.extend({ action: z.literal("READ_FILE"), args: ReadFileArgs }),
+  PlanBase.extend({ action: z.literal("SEARCH"), args: SearchArgs }),
+  PlanBase.extend({ action: z.literal("WRITE_FILE"), args: WriteFileArgs }),
+  PlanBase.extend({ action: z.literal("PATCH_FILE"), args: PatchFileArgs }),
+  PlanBase.extend({ action: z.literal("RUN_CMD"), args: RunCmdArgs }),
+  PlanBase.extend({ action: z.literal("ASK_USER"), args: AskUserArgs }),
+  PlanBase.extend({ action: z.literal("REPORT"), args: ReportArgs }),
+]);
+
 export type Plan = z.infer<typeof PlanSchema>;
-export type Action = z.infer<typeof Action>;
+export type ActionType = z.infer<typeof Action>;

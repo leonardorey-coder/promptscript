@@ -1,0 +1,37 @@
+{
+  "runId": "1767681798679-357cd921cec588",
+  "finishedAt": "2026-01-06T06:43:18.689Z",
+  "budget": {
+    "steps": {
+      "current": 8,
+      "max": 50000,
+      "percent": 0.016
+    },
+    "timeMs": {
+      "current": 11,
+      "max": 600000,
+      "percent": 0.0018333333333333333
+    },
+    "toolCalls": {
+      "current": 0,
+      "max": 2000,
+      "percent": 0
+    },
+    "llmCalls": {
+      "current": 1,
+      "max": 500,
+      "percent": 0.2
+    },
+    "tokens": {
+      "current": 0,
+      "max": 1000000,
+      "percent": 0
+    },
+    "costUsd": {
+      "current": 0,
+      "max": 10,
+      "percent": 0
+    }
+  },
+  "eventCount": 9
+}
