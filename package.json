@@ -1,0 +1,10 @@
+{
+  "name": "promptscript",
+  "type": "module",
+  "scripts": {
+    "ps": "bun run src/cli.ts"
+  },
+  "dependencies": {
+    "zod": "3.23.8"
+  }
+}

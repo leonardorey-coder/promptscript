@@ -1,0 +1,17 @@
+log("hello promptscript")
+
+done = false
+system = "Responde SOLO JSON valido con action/args/done."
+
+def demo():
+  # LLM mock por defecto pide ASK_USER (seguro).
+  plan = llm({ "system": system, "user": "next", "mock_plan": {
+    "action": "REPORT",
+    "args": { "message": "demo ok" },
+    "done": true
+  }})
+
+  if plan.action == "REPORT":
+    log(plan.args.message)
+
+demo()
