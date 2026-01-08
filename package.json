@@ -1,6 +1,11 @@
 {
   "name": "promptscript",
+  "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "promptscript": "./src/cli.ts",
+    "psc": "./src/cli.ts"
+  },
   "scripts": {
     "ps": "bun run src/cli.ts"
   },

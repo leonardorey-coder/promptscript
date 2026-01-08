@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import fs from "node:fs/promises";
 import path from "node:path";
 import { tokenize } from "./dsl/tokenizer";
@@ -26,7 +27,8 @@ function printUsage(): void {
 PromptScript CLI
 
 Usage:
-  bun run src/cli.ts run <file.ps> [options]
+  psc run <file.ps> [options]
+  promptscript run <file.ps> [options]
 
 Options:
   --project <dir>       Project root directory (default: cwd)
@@ -45,9 +47,9 @@ Environment Variables:
   ANTHROPIC_API_KEY     Anthropic API key
 
 Examples:
-  bun run src/cli.ts run examples/workflow.ps --project .
-  bun run src/cli.ts run agent.ps --provider openrouter --model anthropic/claude-sonnet-4
-  bun run src/cli.ts run task.ps --max-cost 5.0 --halt-on-loop
+  psc run examples/workflow.ps --project .
+  psc run agent.ps --provider openrouter --model anthropic/claude-sonnet-4
+  promptscript run task.ps --max-cost 5.0 --halt-on-loop
 `);
 }
 
@@ -139,7 +141,7 @@ async function main(): Promise<void> {
     projectRoot,
     cwd: projectRoot,
     policy: {
-      allowTools: ["READ_FILE", "SEARCH", "WRITE_FILE", "PATCH_FILE", "RUN_CMD"],
+      allowTools: ["READ_FILE", "SEARCH", "WRITE_FILE", "EDIT_FILE", "PATCH_FILE", "RUN_CMD"],
       allowCommands: ["bun", "node", "git", "rg", "ls", "cat", "grep"],
       requireApproval: false,
       maxFileBytes: 200_000,
@@ -155,9 +157,9 @@ async function main(): Promise<void> {
     haltOnLoop,
     loopWarningCallback: verbose
       ? (state) => {
-          console.warn(`[ps] Loop warning: ${state.loopType}`);
-          console.warn(`[ps] ${state.suggestion}`);
-        }
+        console.warn(`[ps] Loop warning: ${state.loopType}`);
+        console.warn(`[ps] ${state.suggestion}`);
+      }
       : undefined,
   });
 
