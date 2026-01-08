@@ -36,6 +36,47 @@ const DEFAULT_CONFIGS: Record<LLMProvider, Partial<LLMConfig>> = {
   custom: {},
 };
 
+export const DEFAULT_SYSTEM_PROMPT = `You are a SENIOR web developer AI. Generate PROFESSIONAL quality code. Respond with ONLY valid JSON.
+
+## FORMAT
+{"action":"ACTION","args":{...},"done":false,"reason":"brief"}
+
+## ACTIONS
+
+READ_FILE - Read file contents
+{"action":"READ_FILE","args":{"path":"public/index.html"},"done":false,"reason":"check file"}
+
+WRITE_FILE - Create/update file (ESCAPE quotes as \\" and newlines as \\n)
+{"action":"WRITE_FILE","args":{"path":"file.html","content":"..."},"done":false,"reason":"create file"}
+
+REPORT - Task complete (done:true)
+{"action":"REPORT","args":{"message":"Done"},"done":true,"reason":"complete"}
+
+## RULES
+1. JSON ONLY - escape " as \\" and newlines as \\n
+2. MAX 3000 chars content - write quality code, not minimal
+3. HTML must be complete: <!DOCTYPE html> to </html>
+4. One action per response
+5. done:true ONLY with REPORT
+
+## QUALITY STANDARDS
+- Use modern CSS: flexbox, grid, gradients, shadows
+- Include hover effects and transitions
+- Use semantic HTML (header, main, section, footer)
+- Professional color schemes (pastels, gradients)
+- Good typography (line-height, font-weight)
+
+## EXAMPLE - Premium landing page
+{"action":"WRITE_FILE","args":{"path":"public/index.html","content":"<!DOCTYPE html>\\n<html lang..."},"done":false,"reason":"create page"}
+
+## MODIFYING FILES
+1. READ_FILE first to see content
+2. WRITE_FILE with ALL existing content + your additions`;
+
+export function getDefaultSystemPrompt(): string {
+  return DEFAULT_SYSTEM_PROMPT;
+}
+
 // ============================================================================
 // Response Types
 // ============================================================================
@@ -96,6 +137,95 @@ function extractJSON(text: string): string {
   return text.trim();
 }
 
+/**
+ * Try to recover a truncated WRITE_FILE action from partial JSON.
+ * Extracts the path and content, and completes the HTML if possible.
+ */
+function recoverTruncatedWriteFile(text: string): object | null {
+  // Check if this looks like a truncated WRITE_FILE
+  const actionMatch = text.match(/"action"\s*:\s*"WRITE_FILE"/i);
+  if (!actionMatch) return null;
+
+  // Extract the path
+  const pathMatch = text.match(/"path"\s*:\s*"([^"]+)"/);
+  if (!pathMatch || !pathMatch[1]) return null;
+  const path = pathMatch[1];
+
+  // Extract partial content - find the content field
+  const contentStart = text.indexOf('"content"');
+  if (contentStart === -1) return null;
+
+  // Find the opening quote of the content value
+  const contentValueMatch = text.slice(contentStart).match(/"content"\s*:\s*"/);
+  if (!contentValueMatch) return null;
+
+  const contentBegin = contentStart + contentValueMatch[0].length;
+  let content = text.slice(contentBegin);
+
+  // Remove trailing JSON structure that might be included
+  // Look for patterns like "},"done": or just "}, which indicate end of content field
+
+  // First, try to find where the content string actually ends
+  // The content is a JSON string value, so it ends at an unescaped quote
+  // followed by JSON structure like }," or just }
+
+  // For HTML files, we can be smarter - find </html> and truncate there
+  const htmlEndMatch = content.match(/<\/html\s*>/i);
+  if (htmlEndMatch) {
+    const htmlEndIndex = content.indexOf(htmlEndMatch[0]) + htmlEndMatch[0].length;
+    content = content.slice(0, htmlEndIndex);
+  } else {
+    // For non-HTML or if </html> not found, remove trailing JSON patterns
+    // Remove everything after the last occurrence of common file endings or JSON markers
+    content = content.replace(/"\s*}\s*,\s*"done"[\s\S]*$/, ''); // Remove "},"done":... pattern
+    content = content.replace(/"\s*}\s*$/, ''); // Remove trailing "}
+    content = content.replace(/\\n?$/, ''); // Remove trailing \n or \
+    content = content.replace(/"[^"]*$/, ''); // Remove trailing partial quote
+  }
+
+  // Unescape the JSON string content
+  try {
+    // Add closing quote and parse as JSON string to unescape
+    const tempJson = `"${content}"`;
+    content = JSON.parse(tempJson);
+  } catch {
+    // Manual unescape for common cases
+    content = content
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+  }
+
+  // If it's HTML, try to complete it
+  if (path.endsWith('.html') || path.endsWith('.htm')) {
+    const lowerContent = content.toLowerCase();
+
+    // Add missing closing tags
+    if (!lowerContent.includes('</body>')) {
+      content += '\n</body>';
+    }
+    if (!lowerContent.includes('</html>')) {
+      content += '\n</html>';
+    }
+
+    // Check if we have the basic structure
+    if (!lowerContent.includes('<!doctype')) {
+      // Too truncated, can't recover
+      console.log('[llm] HTML too truncated to recover, missing DOCTYPE');
+      return null;
+    }
+  }
+
+  console.log(`[llm] Recovered truncated WRITE_FILE for ${path} (${content.length} chars)`);
+
+  return {
+    action: "WRITE_FILE",
+    args: { path, content },
+    done: false,
+    reason: "recovered truncated"
+  };
+}
+
 function parseJSONSafe(text: string): unknown {
   const extracted = extractJSON(text);
 
@@ -114,6 +244,12 @@ function parseJSONSafe(text: string): unknown {
   try {
     return JSON.parse(cleaned);
   } catch {
+    // Try to recover truncated WRITE_FILE
+    const recovered = recoverTruncatedWriteFile(text);
+    if (recovered) {
+      return recovered;
+    }
+
     // Last resort: try original
     return JSON.parse(extracted);
   }
@@ -182,29 +318,10 @@ export class LLMClient {
   }
 
   private buildSystemPrompt(): string {
-    return `You are an AI coding assistant that plans actions step by step.
-
-CRITICAL: You MUST respond with ONLY valid JSON matching this exact schema:
-{
-  "action": "READ_FILE" | "SEARCH" | "WRITE_FILE" | "PATCH_FILE" | "RUN_CMD" | "ASK_USER" | "REPORT",
-  "args": { ... action-specific arguments ... },
-  "done": boolean,
-  "confidence": number (0-1),
-  "reason": "brief explanation"
-}
-
-Action arguments:
-- READ_FILE: { "path": "file/path" }
-- SEARCH: { "query": "search term", "globs": ["*.ts"] (optional) }
-- WRITE_FILE: { "path": "file/path", "content": "file content" }
-- PATCH_FILE: { "path": "file/path", "patch": "REPLACE:\\n<new content>" }
-- RUN_CMD: { "cmd": "command", "args": ["arg1", "arg2"] }
-- ASK_USER: { "question": "what to ask", "choices": ["opt1", "opt2"] (optional) }
-- REPORT: { "message": "summary", "filesChanged": ["file1.ts"] (optional) }
-
-Set "done": true only when the task is fully complete.
-DO NOT include any text outside the JSON object.`;
+    return DEFAULT_SYSTEM_PROMPT;
   }
+
+
 
   async call(input: {
     system?: string;
@@ -226,7 +343,7 @@ DO NOT include any text outside the JSON object.`;
     if (!this.config.apiKey) {
       throw new Error(
         `No API key found for provider: ${this.config.provider}. ` +
-          `Set ${this.config.provider.toUpperCase()}_API_KEY in .env`,
+        `Set ${this.config.provider.toUpperCase()}_API_KEY in .env`,
       );
     }
 
@@ -255,6 +372,8 @@ DO NOT include any text outside the JSON object.`;
     const startTime = Date.now();
     let lastError: Error | null = null;
     let retryCount = 0;
+    let rateLimitCount = 0;
+    const maxRateLimitRetries = 10; // Max rate limit waits before giving up
 
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
       try {
@@ -279,12 +398,31 @@ DO NOT include any text outside the JSON object.`;
         if (!response.ok) {
           const errorBody = await response.text();
 
-          // Handle rate limiting
+          // Handle rate limiting - don't count as attempt, just wait
           if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get("retry-after") ?? "5", 10);
-            console.warn(`[llm] Rate limited. Waiting ${retryAfter}s...`);
+            rateLimitCount++;
+            if (rateLimitCount > maxRateLimitRetries) {
+              throw new Error(`Rate limited too many times (${rateLimitCount}). Giving up.`);
+            }
+
+            // Parse retry-after from header or error body
+            let retryAfter = parseInt(response.headers.get("retry-after") ?? "0", 10);
+
+            // Try to extract from error body if not in header
+            if (retryAfter === 0) {
+              const waitMatch = errorBody.match(/try again in (\d+(?:\.\d+)?)\s*s/i);
+              if (waitMatch && waitMatch[1]) {
+                retryAfter = Math.ceil(parseFloat(waitMatch[1]));
+              } else {
+                retryAfter = 5 * rateLimitCount; // Exponential backoff: 5s, 10s, 15s...
+              }
+            }
+
+            console.log(`[llm] Rate limited (${rateLimitCount}/${maxRateLimitRetries}). Waiting ${retryAfter}s...`);
             await this.sleep(retryAfter * 1000);
-            retryCount++;
+
+            // Don't increment attempt - rate limits are external, retry same attempt
+            attempt--;
             continue;
           }
 
@@ -304,10 +442,10 @@ DO NOT include any text outside the JSON object.`;
             rawResponse: rawContent,
             usage: data.usage
               ? {
-                  promptTokens: data.usage.prompt_tokens,
-                  completionTokens: data.usage.completion_tokens,
-                  totalTokens: data.usage.total_tokens,
-                }
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+                totalTokens: data.usage.total_tokens,
+              }
               : undefined,
             retryCount,
             latencyMs: Date.now() - startTime,
@@ -331,7 +469,23 @@ DO NOT include any text outside the JSON object.`;
             continue;
           }
 
-          throw parseError;
+          const usage = data.usage
+            ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens,
+            }
+            : undefined;
+
+          // Instead of ASK_USER (which ignores no_ask), throw an error
+          // This allows the agent to handle it and retry with a different approach
+          console.log("[llm] LLM response was not valid JSON after retries");
+          const snippet = rawContent.slice(0, 500);
+          throw new Error(
+            `LLM response was not valid JSON after ${this.config.maxRetries} retries. ` +
+            `The model may be generating content that's too long. ` +
+            `Raw response (truncated): ${snippet}...`
+          );
         }
       } catch (error: any) {
         lastError = error;

@@ -16,7 +16,7 @@ const ReadFileArgs = z.object({
 });
 
 const SearchArgs = z.object({
-  query: z.string().min(1),
+  query: z.string().optional().default(""),
   globs: z.array(z.string()).optional(),
   maxResults: z.number().int().positive().max(5000).optional(),
 });
@@ -51,7 +51,7 @@ const ReportArgs = z.object({
 
 // Base fields that every plan has
 const PlanBase = z.object({
-  done: z.boolean(),
+  done: z.boolean().optional().default(false),
   confidence: z.number().min(0).max(1).optional(),
   reason: z.string().optional(),
 });

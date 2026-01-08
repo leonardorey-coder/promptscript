@@ -136,18 +136,34 @@ export const RUN_CMD: Tool<{ cmd: string; args?: string[]; timeoutMs?: number }>
   },
 };
 
-export const SEARCH: Tool<{ query: string; globs?: string[]; maxResults?: number }> = {
+export const SEARCH: Tool<{ query?: string; globs?: string[]; maxResults?: number }> = {
   name: "SEARCH",
-  description: "Search for a substring in workspace files (basic).",
+  description: "Search for a substring in workspace files, or list files matching globs if query is empty.",
   schema: z.object({
-    query: z.string().min(1),
+    query: z.string().optional().default(""),
     globs: z.array(z.string()).optional(),
     maxResults: z.number().int().positive().max(5000).optional(),
   }),
   async run(ctx, args) {
     const maxResults = args.maxResults ?? 200;
-    const query = args.query;
-    const results: { path: string; line: number; text: string }[] = [];
+    const query = args.query ?? "";
+    const globs = args.globs ?? [];
+    const results: { path: string; line?: number; text?: string }[] = [];
+
+    // Simple glob matching (supports * and **)
+    function matchGlob(filePath: string, pattern: string): boolean {
+      const regex = pattern
+        .replace(/\*\*/g, "<<<GLOBSTAR>>>")
+        .replace(/\*/g, "[^/]*")
+        .replace(/<<<GLOBSTAR>>>/g, ".*")
+        .replace(/\?/g, ".");
+      return new RegExp(`^${regex}$`).test(filePath);
+    }
+
+    function matchesAnyGlob(filePath: string): boolean {
+      if (globs.length === 0) return true;
+      return globs.some((g) => matchGlob(filePath, g));
+    }
 
     async function walk(dir: string) {
       const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -159,6 +175,16 @@ export const SEARCH: Tool<{ query: string; globs?: string[]; maxResults?: number
         if (e.isDirectory()) {
           await walk(full);
         } else if (e.isFile()) {
+          // Check glob filter first
+          if (!matchesAnyGlob(rel)) continue;
+
+          // If no query, just list matching files
+          if (!query) {
+            results.push({ path: rel });
+            if (results.length >= maxResults) return;
+            continue;
+          }
+
           // skip big/binary-ish quickly
           const stat = await fs.stat(full);
           if (stat.size > 500_000) continue;
@@ -167,8 +193,9 @@ export const SEARCH: Tool<{ query: string; globs?: string[]; maxResults?: number
           if (!content) continue;
           const lines = content.split("\n");
           for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes(query)) {
-              results.push({ path: rel, line: i + 1, text: lines[i].slice(0, 300) });
+            const line = lines[i];
+            if (line && line.includes(query)) {
+              results.push({ path: rel, line: i + 1, text: line.slice(0, 300) });
               if (results.length >= maxResults) return;
             }
           }
