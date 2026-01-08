@@ -135,13 +135,22 @@ export function parse(toks: Tok[]): Program {
   const parseExpr = (): Expr => parseOr();
 
   const parseOr = (): Expr => {
-    let left = parseAnd();
+    let left = parseNot();
     while (at("KW", "or")) {
       eat("KW", "or");
-      const right = parseAnd();
+      const right = parseNot();
       left = { type: "Binary", op: "or", left, right };
     }
     return left;
+  };
+
+  const parseNot = (): Expr => {
+    if (at("KW", "not")) {
+      eat("KW", "not");
+      const expr = parseNot(); // recursive for not not x
+      return { type: "Unary", op: "not", expr };
+    }
+    return parseAnd();
   };
 
   const parseAnd = (): Expr => {
@@ -235,16 +244,29 @@ export function parse(toks: Tok[]): Program {
     if (at("SYM", "{")) {
       eat("SYM", "{");
       const pairs: { key: string; value: Expr }[] = [];
+
+      const parseObjKey = (): string => {
+        if (at("STR")) {
+          const kt = eat("STR");
+          return "v" in kt ? String(kt.v) : "";
+        }
+        if (at("IDENT")) {
+          const kt = eat("IDENT");
+          return "v" in kt ? String(kt.v) : "";
+        }
+        const got = "v" in peek() ? `${peek().t}(${(peek() as any).v})` : peek().t;
+        throw new Error(`Parse error: expected object key, got ${got}`);
+      };
+
       if (!at("SYM", "}")) {
-        const kt = eat("STR");
-        const k = "v" in kt ? String(kt.v) : "";
+        const k = parseObjKey();
         eat("SYM", ":");
         const v = parseExpr();
         pairs.push({ key: k, value: v });
         while (at("SYM", ",")) {
           eat("SYM", ",");
-          const kt2 = eat("STR");
-          const k2 = "v" in kt2 ? String(kt2.v) : "";
+          if (at("SYM", "}")) break;
+          const k2 = parseObjKey();
           eat("SYM", ":");
           const v2 = parseExpr();
           pairs.push({ key: k2, value: v2 });

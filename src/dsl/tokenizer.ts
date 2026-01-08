@@ -41,48 +41,53 @@ export function tokenize(src: string): Tok[] {
   const lines = src.replaceAll("\r\n", "\n").split("\n");
   const toks: Tok[] = [];
   const indents: number[] = [0];
+  let parenDepth = 0;
 
   for (let li = 0; li < lines.length; li++) {
-    const raw = lines[li];
-    if (raw === undefined) continue;
+    const raw = lines[li] ?? "";
+    let line = parenDepth === 0 ? raw.replace(/#.*$/, "") : raw;
 
-    // strip comments (# ...)
-    const line = raw.replace(/#.*$/, "");
+    if (parenDepth === 0 && line.trim().length === 0) continue;
 
-    // skip completely empty lines
-    if (line.trim().length === 0) continue;
+    let indent = 0;
+    if (parenDepth === 0) {
+      const m = line.match(/^ */);
+      indent = m ? m[0].length : 0;
+      if (/\t/.test(line)) throw new Error(`Tabs not allowed (line ${li + 1})`);
 
-    // indentation: only spaces, tabs forbidden
-    const m = line.match(/^ */);
-    const indent = m ? m[0].length : 0;
-    if (/\t/.test(line)) throw new Error(`Tabs not allowed (line ${li + 1})`);
-
-    const top = indents[indents.length - 1] ?? 0;
-    if (indent > top) {
-      indents.push(indent);
-      toks.push({ t: "INDENT" });
-    } else if (indent < top) {
-      while (indents.length > 1 && indent < (indents[indents.length - 1] ?? 0)) {
-        indents.pop();
-        toks.push({ t: "DEDENT" });
-      }
-      if (indent !== (indents[indents.length - 1] ?? 0)) {
-        throw new Error(`Indentation error (line ${li + 1})`);
+      const top = indents[indents.length - 1] ?? 0;
+      if (indent > top) {
+        indents.push(indent);
+        toks.push({ t: "INDENT" });
+      } else if (indent < top) {
+        while (indents.length > 1 && indent < (indents[indents.length - 1] ?? 0)) {
+          indents.pop();
+          toks.push({ t: "DEDENT" });
+        }
+        if (indent !== (indents[indents.length - 1] ?? 0)) {
+          throw new Error(`Indentation error (line ${li + 1})`);
+        }
       }
     }
 
-    // tokenize rest
-    let i = indent;
-    while (i < line.length) {
+    let i = parenDepth === 0 ? indent : 0;
+
+    while (true) {
+      if (i >= line.length) {
+        if (parenDepth === 0) {
+          toks.push({ t: "NEWLINE" });
+        }
+        break;
+      }
+
       const c = line[i];
-      if (c === undefined) break;
+      if (!c) break;
 
       if (c === " " || c === "\t") {
         i++;
         continue;
       }
 
-      // symbols (multi-char first)
       const two = line.slice(i, i + 2);
       if (two === "==") {
         toks.push({ t: "SYM", v: "==" });
@@ -95,14 +100,14 @@ export function tokenize(src: string): Tok[] {
         continue;
       }
 
-      // Single char symbols (including . for property access)
       if ("(){}[],:=+.".includes(c)) {
         toks.push({ t: "SYM", v: c });
+        if ("([{".includes(c)) parenDepth++;
+        if (")]}".includes(c)) parenDepth = Math.max(0, parenDepth - 1);
         i++;
         continue;
       }
 
-      // string
       if (c === '"') {
         let j = i + 1;
         let out = "";
@@ -130,7 +135,50 @@ export function tokenize(src: string): Tok[] {
         continue;
       }
 
-      // number
+      if (c === "`") {
+        let j = i + 1;
+        let out = "";
+        let curLine = line;
+        let curLi = li;
+
+        while (true) {
+          if (j >= curLine.length) {
+            out += "\n";
+            curLi++;
+            if (curLi >= lines.length) {
+              throw new Error(`Unterminated string (line ${li + 1})`);
+            }
+            curLine = lines[curLi] ?? "";
+            j = 0;
+            continue;
+          }
+
+          const ch = curLine[j];
+          if (ch === "`") {
+            break;
+          }
+
+          if (ch === "\\") {
+            const nx = curLine[j + 1];
+            if (nx === "n") out += "\n";
+            else if (nx === "`") out += "`";
+            else if (nx === "\\") out += "\\";
+            else out += nx ?? "";
+            j += 2;
+            continue;
+          }
+
+          out += ch ?? "";
+          j++;
+        }
+
+        toks.push({ t: "STR", v: out });
+        li = curLi;
+        line = curLine;
+        i = j + 1;
+        continue;
+      }
+
       if (isDigit(c)) {
         let j = i;
         while (j < line.length) {
@@ -143,7 +191,6 @@ export function tokenize(src: string): Tok[] {
         continue;
       }
 
-      // ident/keyword
       if (isAlpha(c)) {
         let j = i;
         while (j < line.length) {
@@ -160,11 +207,8 @@ export function tokenize(src: string): Tok[] {
 
       throw new Error(`Unexpected char '${c}' (line ${li + 1})`);
     }
-
-    toks.push({ t: "NEWLINE" });
   }
 
-  // close indentation
   while (indents.length > 1) {
     indents.pop();
     toks.push({ t: "DEDENT" });
