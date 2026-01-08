@@ -1,12 +1,17 @@
-log("hello promptscript")
+log("Comenzando workflow")
 
-done = false
-system = "Responde SOLO JSON valido con action/args/done."
+modelo = LLMClient({
+  provider: "openrouter",
+  apiKey: "OPENROUTER_API_KEY",
+  model: "mistralai/devstral-2512:free",
+  no_ask: true,
+  maxTokens: 16384,
+})
 
-def demo():
-  plan = llm({"system": system, "user": "next", "mock_plan": {"action": "REPORT", "args": {"message": "demo ok"}, "done": true}})
+# Crear landing page completa en un solo paso
+log("Creando landing page completa de gatitos...")
+plan = modelo("Crea public/index.html - una landing page COMPLETA y PROFESIONAL de gatitos.")
+apply(plan)
 
-  if plan.action == "REPORT":
-    log(plan.args.message)
 
-demo()
+log("Workflow terminado!")
