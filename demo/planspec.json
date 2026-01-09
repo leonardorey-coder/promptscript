@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "goal": "Crear una landing page profesional de gatitos con un carrusel.",
+  "title": "Cat Landing (MD → PlanSpec → PS)",
+  "source": "mixed",
+  "inputDoc": "demo/plan.md",
+  "policy": {
+    "allowActions": ["READ_FILE", "SEARCH", "WRITE_FILE", "PATCH_FILE", "REPORT"],
+    "allowWriteGlobs": ["public/**"],
+    "denyWriteGlobs": ["src/**", "**/*.env", "**/.env*", "**/.git/**"],
+    "budgets": { "maxSteps": 5000, "maxLLMCalls": 50, "maxTimeMs": 300000, "maxCostUsd": 2.0 },
+    "haltOnLoop": true
+  },
+  "llm": {
+    "provider": "openrouter",
+    "model": "mistralai/devstral-2512:free",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "noAsk": true,
+    "maxTokens": 16384
+  },
+  "memory": { "key": "demo.cat-landing", "maxChars": 50000, "keepLastToolResults": 20, "storeDiffSummary": true },
+  "steps": [
+    {
+      "id": "s1",
+      "kind": "run_agent",
+      "title": "Crear index.html",
+      "prompt": "Crea public/index.html con una landing page PROFESIONAL de gatitos. Debe incluir: header, hero, sección carrusel con botones prev/next y dots, CTA y footer. Referencia public/styles.css. Añade aria-labels a los botones. Termina con REPORT.done=true y filesChanged."
+    },
+    {
+      "id": "s2",
+      "kind": "run_agent",
+      "title": "Crear styles.css",
+      "prompt": "Crea public/styles.css para una landing moderna y responsive. Estilo limpio, tipografía agradable, carrusel con overflow hidden, transiciones suaves y layout mobile-first. Termina con REPORT.done=true y filesChanged."
+    },
+    {
+      "id": "s3",
+      "kind": "summarize",
+      "instruction": "Resume en 5 bullets qué archivos cambiaste y qué implementaste (sin repetir el HTML completo).",
+      "memory": { "key": "demo.cat-landing" }
+    },
+    {
+      "id": "s4",
+      "kind": "report",
+      "message": "Demo completada: landing de gatitos con carrusel creada.",
+      "filesChanged": ["public/index.html", "public/styles.css"],
+      "nextSuggestions": ["Agregar JS para autoplay y swipe", "Añadir imágenes reales en /public/images", "Integrar un test E2E en CI"],
+      "done": true
+    }
+  ]
+}

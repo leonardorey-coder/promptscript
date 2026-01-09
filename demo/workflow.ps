@@ -1,0 +1,34 @@
+log("Plan: Cat Landing (MD → PlanSpec → PS)")
+
+client = LLMClient({
+  provider: "openrouter",
+  apiKey: "OPENROUTER_API_KEY",
+  model: "mistralai/devstral-2512:free",
+  no_ask: true,
+  maxTokens: 16384,
+})
+
+with policy {
+  allowActions: ["READ_FILE","SEARCH","WRITE_FILE","PATCH_FILE","REPORT"],
+  allowWriteGlobs: ["public/**"],
+  denyWriteGlobs: ["src/**","**/*.env","**/.env*","**/.git/**"],
+  budgets: { maxSteps: 5000, maxLLMCalls: 50, maxTimeMs: 300000, maxCostUsd: 2 },
+  haltOnLoop: true,
+}:
+  run_agent(client,
+    "Crea public/index.html con una landing page PROFESIONAL de gatitos. Debe incluir: header, hero, sección carrusel con botones prev/next y dots, CTA y footer. Referencia public/styles.css. Añade aria-labels a los botones. Termina con REPORT.done=true y filesChanged.", { memory_key: "demo.cat-landing" }
+  )
+
+  run_agent(client,
+    "Crea public/styles.css para una landing moderna y responsive. Estilo limpio, tipografía agradable, carrusel con overflow hidden, transiciones suaves y layout mobile-first. Termina con REPORT.done=true y filesChanged.", { memory_key: "demo.cat-landing" }
+  )
+
+  summarize("Resume en 5 bullets qué archivos cambiaste y qué implementaste (sin repetir el HTML completo).", { memory_key: "demo.cat-landing" })
+
+  apply("REPORT", {
+    message: "Demo completada: landing de gatitos con carrusel creada.",
+    filesChanged: ["public/index.html","public/styles.css"],
+    nextSuggestions: ["Agregar JS para autoplay y swipe","Añadir imágenes reales en /public/images","Integrar un test E2E en CI"],
+    done: true
+  })
+
