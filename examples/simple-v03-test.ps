@@ -1,0 +1,40 @@
+log("Test basico de PromptScript v0.3")
+
+# Test builtins basicos
+numeros = [1, 2, 3, 4, 5]
+log("Array length: " + len(numeros))
+
+# Test range
+log("Range(3):")
+for i in range(3):
+  log("  " + i)
+
+# Test range con start/end  
+log("Range(2, 5):")
+for i in range(2, 5):
+  log("  " + i)
+
+# Test plan() function - genera plan sin ejecutar
+p = plan("Lee el archivo package.json")
+log("Plan generado: " + p.action)
+
+# Test apply() - ejecuta el plan
+log("Ejecutando plan...")
+resultado = apply(p)
+log("Contenido leido - longitud: " + len(resultado))
+
+# Test do() - sugar function
+log("Usando do() para tarea simple...")
+archivos = do("Lista archivos .ps en examples/")
+log("Archivos encontrados: " + archivos)
+
+# Test guard
+guard len(numeros) > 0
+log("Guard exitoso: array no vacio")
+
+# Test with policy
+with policy { allowActions: ["READ_FILE"] }:
+  contenido = apply("READ_FILE", { path: "package.json" })
+  log("Leido con politica restrictiva - OK")
+
+log("Test basico completado exitosamente!")

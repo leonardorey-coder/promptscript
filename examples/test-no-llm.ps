@@ -1,0 +1,75 @@
+log("Test de PromptScript v0.3 sin LLM")
+
+# Test builtins basicos
+numeros = [1, 2, 3, 4, 5]
+log("Array length: " + len(numeros))
+
+# Test range
+log("Range(3):")
+for i in range(3):
+  log("  " + i)
+
+# Test range con start/end  
+log("Range(2, 5):")
+for i in range(2, 5):
+  log("  " + i)
+
+# Test range con step
+log("Range(0, 10, 2):")
+for i in range(0, 10, 2):
+  log("  " + i)
+
+# Test operadores de comparacion
+log("Operadores de comparacion:")
+if 5 > 3:
+  log("  5 > 3: true")
+if 2 < 4:
+  log("  2 < 4: true")
+if 5 >= 5:
+  log("  5 >= 5: true")
+if 3 <= 3:
+  log("  3 <= 3: true")
+
+# Test guard
+guard len(numeros) > 0
+log("Guard exitoso: array no vacio")
+
+guard 10 >= 5
+log("Guard exitoso: 10 >= 5")
+
+# Test apply directo (sin LLM)
+log("Test apply() directo con READ_FILE:")
+contenido = apply("READ_FILE", { path: "package.json" })
+log("Archivo leido - longitud: " + len(contenido))
+
+# Test with policy
+log("Test with policy:")
+with policy { allowActions: ["READ_FILE"] }:
+  pkg = apply("READ_FILE", { path: "package.json" })
+  log("  Leido con politica restrictiva - OK")
+
+# Test retry
+log("Test retry:")
+intentos = 0
+retry 3 backoff 10:
+  intentos = intentos + 1
+  log("  Intento " + intentos)
+  if intentos < 2:
+    guard false
+  log("  Exito en intento " + intentos)
+
+# Test timeout
+log("Test timeout:")
+timeout 5000:
+  log("  Bloque con timeout ejecutado")
+
+# Test funciones definidas por usuario
+log("Test funciones:")
+def sumar(a, b):
+  resultado = a + b
+  return resultado
+
+suma = sumar(5, 3)
+log("  5 + 3 = " + suma)
+
+log("Todos los tests pasaron exitosamente!")

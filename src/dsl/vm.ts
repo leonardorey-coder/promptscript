@@ -36,6 +36,7 @@ export class VM {
   private funcs = new Map<string, { params: string[]; body: Stmt[] }>();
   private config: VMConfig;
   private loopDetector: LoopDetector;
+  private memoryStore = new Map<string, { summary: string; objective?: string; context?: any }>();
 
   constructor(
     private registry: ToolRegistry,
@@ -106,14 +107,35 @@ export class VM {
     const runLLMPlan = async (input: any, clientOverride?: LLMClient): Promise<Plan> => {
       llmCalls++;
 
+      // Inject memory context if memory_key is provided
+      const enhancedInput = { ...input };
+      if (typeof input.memory_key === "string") {
+        const memoryKey = input.memory_key;
+        const memory = this.memoryStore.get(memoryKey);
+        
+        if (memory) {
+          const contextParts = [enhancedInput.system || ""];
+          contextParts.push("\n--- Memory Context ---");
+          if (memory.objective) {
+            contextParts.push(`Objective: ${memory.objective}`);
+          }
+          if (memory.summary) {
+            contextParts.push(`Previous context: ${memory.summary}`);
+          }
+          contextParts.push("--- End Memory ---\n");
+          
+          enhancedInput.system = contextParts.join("\n");
+        }
+      }
+
       let result: LLMCallResult;
       let success = true;
 
       try {
         if (clientOverride) {
-          result = await clientOverride.call(input);
+          result = await clientOverride.call(enhancedInput);
         } else {
-          result = await llmCallWithMeta(input);
+          result = await llmCallWithMeta(enhancedInput);
         }
       } catch (err: unknown) {
         success = false;
@@ -261,11 +283,23 @@ export class VM {
           const r = await evalExpr(e.right, env);
           switch (e.op) {
             case "+":
+              // Si ambos son números, sumar; sino concatenar strings
+              if (typeof l === "number" && typeof r === "number") {
+                return l + r;
+              }
               return String(l) + String(r);
             case "==":
               return l === r;
             case "!=":
               return l !== r;
+            case ">":
+              return Number(l) > Number(r);
+            case "<":
+              return Number(l) < Number(r);
+            case ">=":
+              return Number(l) >= Number(r);
+            case "<=":
+              return Number(l) <= Number(r);
             case "and":
               return Boolean(l) && Boolean(r);
             case "or":
@@ -305,6 +339,46 @@ export class VM {
           if (e.name === "log") {
             console.log("[ps]", callArgs[0]);
             return null;
+          }
+
+          if (e.name === "len") {
+            const val = callArgs[0];
+            if (Array.isArray(val)) return val.length;
+            if (typeof val === "string") return val.length;
+            return 0;
+          }
+
+          if (e.name === "range") {
+            const args = callArgs;
+            if (args.length === 1) {
+              // range(n) -> 0 to n-1
+              const n = Number(args[0]) || 0;
+              return Array.from({ length: Math.max(0, n) }, (_, i) => i);
+            } else if (args.length === 2) {
+              // range(start, end) -> start to end-1
+              const start = Number(args[0]) || 0;
+              const end = Number(args[1]) || 0;
+              const length = Math.max(0, end - start);
+              return Array.from({ length }, (_, i) => start + i);
+            } else if (args.length === 3) {
+              // range(start, end, step) -> start to end-1 with step
+              const start = Number(args[0]) || 0;
+              const end = Number(args[1]) || 0;
+              const step = Number(args[2]) || 1;
+              if (step === 0) return [];
+              const result: number[] = [];
+              if (step > 0) {
+                for (let i = start; i < end; i += step) {
+                  result.push(i);
+                }
+              } else {
+                for (let i = start; i > end; i += step) {
+                  result.push(i);
+                }
+              }
+              return result;
+            }
+            return [];
           }
 
           if (e.name === "llm") {
@@ -399,6 +473,78 @@ export class VM {
             return result as Value;
           }
 
+          if (e.name === "plan") {
+            const prompt = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
+            
+            const baseSystem = typeof opts.system === "string" ? opts.system : DEFAULT_SYSTEM_PROMPT;
+            const system = applyNoAsk(baseSystem, typeof opts.no_ask === "boolean" ? opts.no_ask : undefined);
+            const input: Record<string, unknown> = {
+              system,
+              user: prompt,
+            };
+
+            if (typeof opts.context === "string") input.context = opts.context;
+            if (typeof opts.memory_key === "string") input.memory_key = opts.memory_key;
+            if (opts.mock_plan) input.mock_plan = opts.mock_plan;
+
+            // Create client override if needed
+            const overrides: Record<string, unknown> = {};
+            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.apiKey === "string") overrides.apiKey = opts.apiKey;
+            if (typeof opts.baseUrl === "string") overrides.baseUrl = opts.baseUrl;
+            if (typeof opts.model === "string") overrides.model = opts.model;
+            if (typeof opts.temperature === "number") overrides.temperature = opts.temperature;
+            if (typeof opts.maxTokens === "number") overrides.maxTokens = opts.maxTokens;
+            if (typeof opts.maxRetries === "number") overrides.maxRetries = opts.maxRetries;
+            if (typeof opts.retryDelayMs === "number") overrides.retryDelayMs = opts.retryDelayMs;
+            if (typeof opts.timeoutMs === "number") overrides.timeoutMs = opts.timeoutMs;
+
+            const useOverrides = Object.keys(overrides).length > 0;
+            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+
+            const plan = await runLLMPlan(input, clientOverride);
+            return plan as unknown as Value;
+          }
+
+          if (e.name === "do") {
+            // Sugar for apply(plan(prompt))
+            const prompt = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
+            
+            // First generate plan
+            const baseSystem = typeof opts.system === "string" ? opts.system : DEFAULT_SYSTEM_PROMPT;
+            const system = applyNoAsk(baseSystem, typeof opts.no_ask === "boolean" ? opts.no_ask : undefined);
+            const input: Record<string, unknown> = {
+              system,
+              user: prompt,
+            };
+
+            if (typeof opts.context === "string") input.context = opts.context;
+            if (typeof opts.memory_key === "string") input.memory_key = opts.memory_key;
+            if (opts.mock_plan) input.mock_plan = opts.mock_plan;
+
+            const overrides: Record<string, unknown> = {};
+            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.apiKey === "string") overrides.apiKey = opts.apiKey;
+            if (typeof opts.baseUrl === "string") overrides.baseUrl = opts.baseUrl;
+            if (typeof opts.model === "string") overrides.model = opts.model;
+            if (typeof opts.temperature === "number") overrides.temperature = opts.temperature;
+            if (typeof opts.maxTokens === "number") overrides.maxTokens = opts.maxTokens;
+
+            const useOverrides = Object.keys(overrides).length > 0;
+            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+
+            const plan = await runLLMPlan(input, clientOverride);
+            
+            // Then apply it
+            const result = await applyPlan(plan, {
+              logReport: true,
+              returnReport: true,
+            });
+            return result as Value;
+          }
+
           if (e.name === "apply") {
             // apply("ACTION", args) -> direct tool call
             if (typeof callArgs[0] === "string") {
@@ -406,7 +552,7 @@ export class VM {
               const actionArgs = (callArgs[1] ?? {}) as Record<string, unknown>;
               return await runToolAction(actionName, actionArgs);
             }
-            // apply(plan) -> same as apply_plan
+            // apply(plan) -> execute plan (NO LLM)
             const planInput = callArgs[0];
             const result = await applyPlan(planInput, {
               logReport: true,
@@ -415,21 +561,105 @@ export class VM {
             return result as Value;
           }
 
-          // run_agent(client, prompt, opts?) - iterative agent loop until done
+          if (e.name === "parallel") {
+            const items = Array.isArray(callArgs[0]) ? callArgs[0] : [];
+            const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
+            const max = typeof opts.max === "number" ? opts.max : 4;
+            const failFast = typeof opts.fail_fast === "boolean" ? opts.fail_fast : true;
+            
+            // Restrict to safe actions in v0.3
+            const safeActions = new Set(["READ_FILE", "SEARCH"]);
+            
+            const results: Array<{ ok: boolean; value?: any; error?: string }> = [];
+            const promises: Promise<void>[] = [];
+            
+            // Process in batches of max
+            for (let i = 0; i < items.length; i += max) {
+              const batch = items.slice(i, i + max);
+              const batchPromises = batch.map(async (item: any, batchIdx: number) => {
+                const globalIdx = i + batchIdx;
+                results[globalIdx] = { ok: false, error: "pending" };
+                
+                try {
+                  if (!item || typeof item.action !== "string") {
+                    throw new Error("Invalid item: missing action");
+                  }
+                  
+                  if (!safeActions.has(item.action)) {
+                    throw new Error(`Action not allowed in parallel: ${item.action}`);
+                  }
+                  
+                  const actionArgs = item.args || {};
+                  const result = await runToolAction(item.action, actionArgs);
+                  results[globalIdx] = { ok: true, value: result };
+                } catch (err: unknown) {
+                  const error = err instanceof Error ? err.message : String(err);
+                  results[globalIdx] = { ok: false, error };
+                  
+                  if (failFast) {
+                    throw err;
+                  }
+                }
+              });
+              
+              promises.push(...batchPromises);
+              
+              // Wait for current batch
+              if (failFast) {
+                await Promise.all(batchPromises);
+              }
+            }
+            
+            if (!failFast) {
+              await Promise.allSettled(promises);
+            }
+            
+            return results;
+          }
+
+          // run_agent(clientOrOpts, prompt, opts?) - iterative agent loop until done
           if (e.name === "run_agent") {
-            const clientObj = callArgs[0];
+            const firstArg = callArgs[0];
             const initialPrompt = String(callArgs[1] ?? "");
             const opts = (callArgs[2] ?? {}) as Record<string, unknown>;
-            const maxIterations = typeof opts.max_iterations === "number" ? opts.max_iterations : 20;
-            const requireWrite = typeof opts.require_write === "boolean" ? opts.require_write : false;
-
-            if (!clientObj || typeof clientObj !== "object" || !(clientObj as any).__ps_llm_client) {
-              throw new Error("run_agent: first argument must be an LLMClient");
+            
+            let client: LLMClient;
+            let noAsk: boolean | undefined;
+            let mockPlan: any;
+            
+            // Check if first argument is LLMClient or inline config
+            if (firstArg && typeof firstArg === "object" && (firstArg as any).__ps_llm_client) {
+              // Explicit LLMClient
+              client = (firstArg as any).client as LLMClient;
+              noAsk = (firstArg as any).noAsk as boolean | undefined;
+              mockPlan = (firstArg as any).mockPlan;
+            } else if (firstArg && typeof firstArg === "object") {
+              // Inline config - create LLMClient
+              const cfg = firstArg as Record<string, unknown>;
+              const rawApiKey = cfg.apiKey;
+              const resolvedApiKey =
+                typeof rawApiKey === "string" && process.env[rawApiKey]
+                  ? process.env[rawApiKey]
+                  : rawApiKey;
+              
+              const { mock_plan, mockPlan: mockPlanAlt, no_ask, ...rest } = cfg;
+              const clientConfig: Record<string, unknown> = { ...rest };
+              if (rawApiKey !== undefined) {
+                clientConfig.apiKey = resolvedApiKey ?? rawApiKey;
+              }
+              client = new LLMClient(clientConfig as any);
+              noAsk = typeof no_ask === "boolean" ? no_ask : undefined;
+              mockPlan = mock_plan ?? mockPlanAlt;
+            } else {
+              throw new Error("run_agent: first argument must be an LLMClient or config object");
             }
 
-            const client = (clientObj as any).client as LLMClient;
-            const noAsk = (clientObj as any).noAsk as boolean | undefined;
-            const mockPlan = (clientObj as any).mockPlan;
+            // No max_iterations by default (indefinite)
+            const maxIterations = typeof opts.max_iterations === "number" ? opts.max_iterations : Number.MAX_SAFE_INTEGER;
+            const requireWrite = typeof opts.require_write === "boolean" ? opts.require_write : false;
+            const stopOnReport = typeof opts.stop_on_report === "boolean" ? opts.stop_on_report : true;
+            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : undefined;
+            const contextFiles = Array.isArray(opts.context_files) ? opts.context_files : [];
 
             const history: { role: string; content: string }[] = [];
             let currentPrompt = initialPrompt;
@@ -450,6 +680,13 @@ export class VM {
               if (mockPlan !== undefined) {
                 input.mock_plan = mockPlan;
               }
+              if (memoryKey) {
+                input.memory_key = memoryKey;
+              }
+              // Add context files if specified
+              if (contextFiles.length > 0) {
+                input.context_files = contextFiles;
+              }
 
               const plan = await runLLMPlan(input, client);
 
@@ -459,7 +696,7 @@ export class VM {
               
               try {
                 actionResult = await applyPlan(plan, {
-                  logReport: true,
+                  logReport: stopOnReport,
                   returnReport: true,
                 });
               } catch (err: unknown) {
@@ -468,7 +705,10 @@ export class VM {
                 console.log(`[ps] Action error: ${actionError}`);
               }
 
-              // Add to history for context
+              // Add to history for context (keep it compact)
+              if (history.length > 20) {
+                history.splice(0, history.length - 20); // Keep last 20 entries
+              }
               history.push({ role: "assistant", content: JSON.stringify(plan) });
               if (actionError) {
                 history.push({ role: "user", content: `Action ERROR: ${actionError}. Try a different approach.` });
@@ -483,8 +723,21 @@ export class VM {
                 hasWritten = true;
               }
 
-              // Check if done (but require write if option is set)
-              if (plan.done === true && !actionError) {
+              // Check if REPORT with done=true (v0.3 behavior)
+              if (plan.action === "REPORT" && plan.done === true && !actionError) {
+                if (stopOnReport) {
+                  if (requireWrite && !hasWritten) {
+                    console.log(`[ps] Agent tried to complete without writing. Forcing continuation...`);
+                    currentPrompt = `You reported done but haven't made any changes yet. You MUST use WRITE_FILE or PATCH_FILE to modify the file before reporting done. DO NOT just read and report - actually make the changes requested.`;
+                    continue;
+                  }
+                  console.log(`[ps] Agent completed after ${iteration} iterations`);
+                  break;
+                }
+              }
+
+              // For other cases, check done flag
+              if (plan.done === true && plan.action !== "REPORT" && !actionError) {
                 if (requireWrite && !hasWritten) {
                   console.log(`[ps] Agent tried to complete without writing. Forcing continuation...`);
                   currentPrompt = `You reported done but haven't made any changes yet. You MUST use WRITE_FILE or PATCH_FILE to modify the file before reporting done. DO NOT just read and report - actually make the changes requested.`;
@@ -502,11 +755,141 @@ export class VM {
               }
             }
 
-            if (iteration >= maxIterations) {
+            if (iteration >= maxIterations && maxIterations !== Number.MAX_SAFE_INTEGER) {
               console.warn(`[ps] Agent reached max iterations (${maxIterations})`);
             }
 
             return lastResult;
+          }
+
+          if (e.name === "decide") {
+            const config = (callArgs[0] ?? {}) as Record<string, unknown>;
+            const question = String(config.question ?? "");
+            const schema = config.schema || {};
+            const memoryKey = typeof config.memory_key === "string" ? config.memory_key : undefined;
+            
+            const systemPrompt = `You are an AI assistant that makes structured decisions. 
+            
+Return a JSON object that matches the provided schema exactly. Do not include any explanation or markdown.
+
+Schema: ${JSON.stringify(schema)}`;
+
+            const input: Record<string, unknown> = {
+              system: systemPrompt,
+              user: question,
+            };
+            
+            if (memoryKey) {
+              input.memory_key = memoryKey;
+            }
+
+            // Handle provider overrides
+            const overrides: Record<string, unknown> = {};
+            if (typeof config.provider === "string") overrides.provider = config.provider;
+            if (typeof config.model === "string") overrides.model = config.model;
+            
+            const useOverrides = Object.keys(overrides).length > 0;
+            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+            
+            const plan = await runLLMPlan(input, clientOverride);
+            
+            // Extract the structured response from plan.args or parse plan content
+            if (plan.args && typeof plan.args === "object") {
+              return plan.args;
+            }
+            return {};
+          }
+
+          if (e.name === "judge") {
+            const question = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
+            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : undefined;
+            
+            const systemPrompt = `You are an AI assistant that makes boolean judgments.
+
+Answer with exactly one of these JSON responses:
+{"action": "REPORT", "args": {"message": true}, "done": true}
+{"action": "REPORT", "args": {"message": false}, "done": true}
+
+Do not include any explanation. Only respond with the JSON.`;
+
+            const input: Record<string, unknown> = {
+              system: systemPrompt,
+              user: question,
+            };
+            
+            if (memoryKey) {
+              input.memory_key = memoryKey;
+            }
+
+            // Handle provider overrides
+            const overrides: Record<string, unknown> = {};
+            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.model === "string") overrides.model = opts.model;
+            
+            const useOverrides = Object.keys(overrides).length > 0;
+            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+            
+            const plan = await runLLMPlan(input, clientOverride);
+            
+            // Extract boolean result
+            if (plan.args && typeof plan.args === "object") {
+              const result = (plan.args as any).message;
+              return Boolean(result);
+            }
+            return false;
+          }
+
+          if (e.name === "summarize") {
+            const instruction = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
+            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : undefined;
+            
+            if (!memoryKey) {
+              console.warn("[ps] summarize() called without memory_key - no effect");
+              return null;
+            }
+
+            const systemPrompt = `You are an AI assistant that creates concise summaries for memory management.
+
+Your task is to summarize the current context/memory according to the given instruction. 
+Keep the summary concise (under 200 words) but include all essential information.
+Focus on what has been accomplished, current state, and any important decisions made.
+
+Return a REPORT action with the summary.`;
+
+            const input: Record<string, unknown> = {
+              system: systemPrompt,
+              user: instruction,
+              memory_key: memoryKey,
+            };
+
+            // Handle provider overrides
+            const overrides: Record<string, unknown> = {};
+            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.model === "string") overrides.model = opts.model;
+            
+            const useOverrides = Object.keys(overrides).length > 0;
+            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+            
+            const plan = await runLLMPlan(input, clientOverride);
+            
+            // Apply the plan to get summary content
+            const result = await applyPlan(plan, {
+              logReport: true,
+              returnReport: true,
+            });
+            
+            // Update memory store with the summary
+            const summaryText = typeof result === "string" ? result : JSON.stringify(result);
+            const existingMemory = this.memoryStore.get(memoryKey) || { summary: "", objective: "", context: {} };
+            this.memoryStore.set(memoryKey, {
+              ...existingMemory,
+              summary: summaryText,
+            });
+            
+            console.log(`[ps] Memory ${memoryKey} summarized`);
+            return result;
           }
 
           if (e.name === "tool") {
@@ -519,6 +902,33 @@ export class VM {
           // user funcs
           const f = this.funcs.get(e.name);
           if (!f) throw new Error(`Unknown function: ${e.name}`);
+          
+          // Handle class constructor
+          if ((f as any).__ps_class) {
+            const className = (f as any).className || e.name;
+            const instance: Record<string, any> = { __ps_class_instance: true, __ps_class_name: className };
+            
+            // Create local environment with 'self' pointing to instance
+            const local = new Map<string, Value>();
+            local.set("self", instance);
+            f.params.forEach((p, idx) => local.set(p, callArgs[idx] ?? null));
+
+            try {
+              await execBlock(f.body, local);
+              // Bind methods to instance
+              for (const [methodName, methodFunc] of this.funcs.entries()) {
+                if (methodName.startsWith(`${className}.`) || methodName.includes("__init__")) {
+                  // Skip for now - simplified class implementation
+                }
+              }
+              return instance;
+            } catch (sig) {
+              if (sig instanceof ReturnSignal) return sig.value;
+              throw sig;
+            }
+          }
+          
+          // Regular function call
           const local = new Map<string, Value>();
           f.params.forEach((p, idx) => local.set(p, callArgs[idx] ?? null));
 
@@ -539,6 +949,17 @@ export class VM {
         case "Def":
           this.funcs.set(s.name, { params: s.params, body: s.body });
           return;
+        case "Class": {
+          // Simple class implementation - store as constructor function
+          const classFunc = {
+            params: [],
+            body: s.body,
+            __ps_class: true,
+            className: s.name,
+          };
+          this.funcs.set(s.name, classFunc);
+          return;
+        }
         case "Assign": {
           const v = await evalExpr(s.value, env);
           env.set(s.name, v);
@@ -570,6 +991,106 @@ export class VM {
               if (sig instanceof ReturnSignal) throw sig;
               throw sig;
             }
+          }
+          return;
+        }
+        case "For": {
+          const iterValue = await evalExpr(s.iter, env);
+          if (!Array.isArray(iterValue)) {
+            throw new Error(`For loop iterator must be an array, got ${typeof iterValue}`);
+          }
+          
+          for (const item of iterValue) {
+            env.set(s.var, item);
+            try {
+              await execBlock(s.body, env);
+            } catch (sig) {
+              if (sig instanceof BreakSignal) break;
+              if (sig instanceof ReturnSignal) throw sig;
+              throw sig;
+            }
+          }
+          return;
+        }
+        case "WithPolicy": {
+          const policyValue = await evalExpr(s.policy, env);
+          if (!policyValue || typeof policyValue !== "object") {
+            throw new Error("Policy must be an object");
+          }
+          
+          // Save current policy
+          const originalPolicy = { ...this.ctx.policy };
+          
+          try {
+            // Apply new policy scope
+            const newPolicy = policyValue as any;
+            if (Array.isArray(newPolicy.allowActions)) {
+              this.ctx.policy.allowTools = newPolicy.allowActions;
+            }
+            if (Array.isArray(newPolicy.allowCommands)) {
+              this.ctx.policy.allowCommands = newPolicy.allowCommands;
+            }
+            if (typeof newPolicy.requireApproval === "boolean") {
+              this.ctx.policy.requireApproval = newPolicy.requireApproval;
+            }
+            if (typeof newPolicy.maxFileBytes === "number") {
+              this.ctx.policy.maxFileBytes = newPolicy.maxFileBytes;
+            }
+            
+            await execBlock(s.body, env);
+          } finally {
+            // Restore original policy
+            this.ctx.policy = originalPolicy;
+          }
+          return;
+        }
+        case "Retry": {
+          const countValue = await evalExpr(s.count, env);
+          const maxRetries = Number(countValue) || 1;
+          const backoffMs = s.backoff ? Number(await evalExpr(s.backoff, env)) || 0 : 0;
+          
+          let lastError: unknown = null;
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+              await execBlock(s.body, env);
+              return; // Success - exit retry loop
+            } catch (err) {
+              lastError = err;
+              if (err instanceof ReturnSignal || err instanceof BreakSignal) {
+                throw err; // Don't retry control flow signals
+              }
+              
+              if (attempt < maxRetries - 1 && backoffMs > 0) {
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+              }
+            }
+          }
+          
+          // All retries failed
+          throw lastError || new Error("Retry block failed");
+        }
+        case "Timeout": {
+          const durationValue = await evalExpr(s.duration, env);
+          const timeoutMs = Number(durationValue) || 0;
+          
+          if (timeoutMs <= 0) {
+            await execBlock(s.body, env);
+            return;
+          }
+          
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(`Timeout: operation exceeded ${timeoutMs}ms`)), timeoutMs);
+          });
+          
+          const bodyPromise = execBlock(s.body, env);
+          
+          await Promise.race([bodyPromise, timeoutPromise]);
+          return;
+        }
+        case "Guard": {
+          const guardValue = await evalExpr(s.expr, env);
+          if (!Boolean(guardValue)) {
+            throw new Error(`Guard failed: ${JSON.stringify(s.expr)}`);
           }
           return;
         }

@@ -11,11 +11,19 @@ export type Tok =
 
 const KEYWORDS = new Set([
   "def",
+  "class",
   "if",
   "else",
   "while",
+  "for",
   "return",
   "break",
+  "with",
+  "policy",
+  "retry",
+  "backoff", 
+  "timeout",
+  "guard",
   "true",
   "false",
   "null",
@@ -38,7 +46,7 @@ function isDigit(c: string): boolean {
 }
 
 export function tokenize(src: string): Tok[] {
-  const lines = src.replaceAll("\r\n", "\n").split("\n");
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
   const toks: Tok[] = [];
   const indents: number[] = [0];
   let parenDepth = 0;
@@ -99,8 +107,18 @@ export function tokenize(src: string): Tok[] {
         i += 2;
         continue;
       }
+      if (two === ">=") {
+        toks.push({ t: "SYM", v: ">=" });
+        i += 2;
+        continue;
+      }
+      if (two === "<=") {
+        toks.push({ t: "SYM", v: "<=" });
+        i += 2;
+        continue;
+      }
 
-      if ("(){}[],:=+.".includes(c)) {
+      if ("(){}[],:=+.<>".includes(c)) {
         toks.push({ t: "SYM", v: c });
         if ("([{".includes(c)) parenDepth++;
         if (")]}".includes(c)) parenDepth = Math.max(0, parenDepth - 1);

@@ -45,8 +45,14 @@ export function parse(toks: Tok[]): Program {
   const parseStmt = (): Stmt => {
     const p = peek();
     if (p.t === "KW" && "v" in p && p.v === "def") return parseDef();
+    if (p.t === "KW" && "v" in p && p.v === "class") return parseClass();
     if (p.t === "KW" && "v" in p && p.v === "if") return parseIf();
     if (p.t === "KW" && "v" in p && p.v === "while") return parseWhile();
+    if (p.t === "KW" && "v" in p && p.v === "for") return parseFor();
+    if (p.t === "KW" && "v" in p && p.v === "with") return parseWith();
+    if (p.t === "KW" && "v" in p && p.v === "retry") return parseRetry();
+    if (p.t === "KW" && "v" in p && p.v === "timeout") return parseTimeout();
+    if (p.t === "KW" && "v" in p && p.v === "guard") return parseGuard();
     if (p.t === "KW" && "v" in p && p.v === "return") return parseReturn();
     if (p.t === "KW" && "v" in p && p.v === "break") {
       eat("KW", "break");
@@ -131,6 +137,62 @@ export function parse(toks: Tok[]): Program {
     return { type: "Return", value };
   };
 
+  const parseClass = (): Stmt => {
+    eat("KW", "class");
+    const nameTok = eat("IDENT");
+    const name = "v" in nameTok ? String(nameTok.v) : "";
+    eat("SYM", ":");
+    const body = parseBlock();
+    return { type: "Class", name, body };
+  };
+
+  const parseFor = (): Stmt => {
+    eat("KW", "for");
+    const varTok = eat("IDENT");
+    const varName = "v" in varTok ? String(varTok.v) : "";
+    eat("KW", "in");
+    const iter = parseExpr();
+    eat("SYM", ":");
+    const body = parseBlock();
+    return { type: "For", var: varName, iter, body };
+  };
+
+  const parseWith = (): Stmt => {
+    eat("KW", "with");
+    eat("KW", "policy");
+    const policy = parseExpr();
+    eat("SYM", ":");
+    const body = parseBlock();
+    return { type: "WithPolicy", policy, body };
+  };
+
+  const parseRetry = (): Stmt => {
+    eat("KW", "retry");
+    const count = parseExpr();
+    let backoff: Expr | undefined;
+    if (at("KW", "backoff")) {
+      eat("KW", "backoff");
+      backoff = parseExpr();
+    }
+    eat("SYM", ":");
+    const body = parseBlock();
+    return { type: "Retry", count, backoff, body };
+  };
+
+  const parseTimeout = (): Stmt => {
+    eat("KW", "timeout");
+    const duration = parseExpr();
+    eat("SYM", ":");
+    const body = parseBlock();
+    return { type: "Timeout", duration, body };
+  };
+
+  const parseGuard = (): Stmt => {
+    eat("KW", "guard");
+    const expr = parseExpr();
+    return { type: "Guard", expr };
+  };
+
   // -------- Expressions (precedence) --------
   const parseExpr = (): Expr => parseOr();
 
@@ -165,7 +227,7 @@ export function parse(toks: Tok[]): Program {
 
   const parseCmp = (): Expr => {
     let left = parseAdd();
-    while (at("SYM", "==") || at("SYM", "!=") || at("KW", "in")) {
+    while (at("SYM", "==") || at("SYM", "!=") || at("SYM", ">") || at("SYM", "<") || at("SYM", ">=") || at("SYM", "<=") || at("KW", "in")) {
       if (at("SYM", "==")) {
         eat("SYM", "==");
         const right = parseAdd();
@@ -174,6 +236,22 @@ export function parse(toks: Tok[]): Program {
         eat("SYM", "!=");
         const right = parseAdd();
         left = { type: "Binary", op: "!=", left, right };
+      } else if (at("SYM", ">")) {
+        eat("SYM", ">");
+        const right = parseAdd();
+        left = { type: "Binary", op: ">", left, right };
+      } else if (at("SYM", "<")) {
+        eat("SYM", "<");
+        const right = parseAdd();
+        left = { type: "Binary", op: "<", left, right };
+      } else if (at("SYM", ">=")) {
+        eat("SYM", ">=");
+        const right = parseAdd();
+        left = { type: "Binary", op: ">=", left, right };
+      } else if (at("SYM", "<=")) {
+        eat("SYM", "<=");
+        const right = parseAdd();
+        left = { type: "Binary", op: "<=", left, right };
       } else {
         eat("KW", "in");
         const right = parseAdd();

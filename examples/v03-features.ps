@@ -1,0 +1,107 @@
+log("Demostrando funcionalidades PromptScript v0.3")
+
+# Variables basicas
+imagenes = ["imagen1.jpg", "imagen2.jpg", "imagen3.jpg"]
+
+# Usando len() y range() - nuevos builtins
+log("Imagenes totales: " + len(imagenes))
+
+# For loops con range
+log("Listando imagenes con for loop:")
+for i in range(len(imagenes)):
+  log("  " + i + ": " + imagenes[i])
+
+# Cliente LLM configurado
+cliente = LLMClient({
+  provider: "openrouter",
+  apiKey: "OPENROUTER_API_KEY",
+  model: "mistralai/devstral-2512:free",
+  no_ask: true
+})
+
+# Test plan() - generar plan sin ejecutar
+log("Generando plan...")
+p = plan("Lee README.md y cuentame que hace")
+log("Plan generado: " + p.action)
+
+# Test apply() - ejecutar plan previamente generado
+log("Ejecutando plan...")
+resultado = apply(p)
+log("Resultado: " + resultado)
+
+# Test do() - sugar para apply(plan())
+log("Usando do() para una tarea simple...")
+out = do("Lista archivos .md en el directorio")
+log("Archivos encontrados: " + out)
+
+# Test parallel() - ejecutar acciones en paralelo
+log("Ejecutando busquedas en paralelo...")
+results = parallel([
+  { action: "READ_FILE", args: { path: "README.md" } },
+  { action: "SEARCH", args: { query: "TODO" } }
+], { max: 2, fail_fast: true })
+
+for i in range(len(results)):
+  if results[i].ok:
+    log("Resultado " + i + " exitoso")
+  else:
+    log("Resultado " + i + " fallo: " + results[i].error)
+
+# Guard - invariante que debe ser verdadero
+guard len(imagenes) <= 10
+log("Guard paso: no mas de 10 imagenes")
+
+# With policy - scope de permisos limitados
+with policy { allowActions: ["READ_FILE", "SEARCH"] }:
+  contenido = apply("READ_FILE", { path: "package.json" })
+  log("Leido con politica restrictiva")
+
+# Retry con backoff
+log("Probando retry...")
+retry 2 backoff 100:
+  test_plan = plan("Devuelve un READ_FILE valido")
+  apply(test_plan)
+
+# Test funciones neuronales con memory_key
+log("Usando run_agent con memoria persistente...")
+run_agent(cliente,
+  "Crea un simple index.html con titulo 'Test v0.3'",
+  { 
+    memory_key: "demo.project",
+    require_write: true 
+  }
+)
+
+# Judge - decision booleana
+es_valido = judge("¿El archivo index.html fue creado correctamente?", { memory_key: "demo.project" })
+if es_valido:
+  log("HTML validado correctamente")
+else:
+  log("HTML necesita ajustes")
+
+# Summarize - compactar memoria
+summarize("Resume lo que hicimos en este demo", { memory_key: "demo.project" })
+
+# Decide - decision estructurada
+decision = decide({
+  question: "¿Que sigue despues del demo?",
+  schema: { next: "string", priority: "number" },
+  memory_key: "demo.project"
+})
+log("Decision: " + decision.next + " (prioridad: " + decision.priority + ")")
+
+# Clase simple
+class DemoHelper:
+  def __init__(self, name):
+    self.name = name
+    log("DemoHelper creado: " + name)
+
+  def saludar(self):
+    log("Hola desde " + self.name)
+    return "ok"
+
+# Instanciar y usar clase
+helper = DemoHelper("Test")
+helper.saludar()
+
+log("Demo de PromptScript v0.3 completado!")
