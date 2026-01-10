@@ -1,0 +1,85 @@
+log("=== Agente Avanzado con Memoria Jerarquica ===")
+log("")
+
+log("Paso 1: Construir memoria de largo plazo del proyecto")
+build_memory("proyecto", {
+  globs: ["src/**/*.ts", "examples/**/*.ps", "docs/**/*.md"],
+  mode: "incremental",
+  config: {
+    provider: "openrouter",
+    model: "mistralai/devstral-2512:free"
+  }
+})
+log("Memoria LTM construida")
+log("")
+
+log("Paso 2: Configurar formato TOON para reducir costos")
+set_context_format("toon")
+log("Formato TOON activado")
+log("")
+
+log("Paso 3: Simular multiples tareas con gestion de memoria")
+tareas = [
+  "Analizar estructura del proyecto",
+  "Identificar patrones de codigo",
+  "Buscar oportunidades de optimizacion"
+]
+
+for i in range(len(tareas)):
+  tarea = tareas[i]
+  log("Ejecutando tarea " + (i + 1) + ": " + tarea)
+  
+  log("  - Recuperando contexto relevante desde LTM...")
+  contexto = recall("proyecto", tarea, { top_k: 3 })
+  log("  - Chunks recuperados: " + len(contexto.chunks))
+  
+  for j in range(len(contexto.chunks)):
+    chunk = contexto.chunks[j]
+    log("    * " + chunk.source)
+  
+  if i > 1:
+    log("  - Compactando memoria STM...")
+    resultado = forget({
+      memory_key: "agente_session",
+      mode: "compact"
+    })
+    log("  - Memoria compactada: " + resultado.before_tokens + " -> " + resultado.after_tokens + " tokens")
+  
+  log("")
+
+log("Paso 4: Ejecutar sub-workflow de analisis")
+resultado_analisis = call("examples/workflows/data-processing.ps", {
+  args: { contexto: "analisis_completo" },
+  inherit_memory: true
+})
+
+if resultado_analisis.ok:
+  log("Analisis completado exitosamente")
+else:
+  log("Error en analisis: " + resultado_analisis.error)
+
+log("")
+log("Paso 5: Comparar eficiencia de formatos")
+datos_contexto = {
+  tareas_completadas: tareas,
+  chunks_usados: 9,
+  memoria_compactada: 2,
+  tiempo_total_ms: 5000
+}
+
+comparacion = compare_formats(datos_contexto)
+log("Comparacion JSON vs TOON:")
+log("  JSON: " + comparacion.json.tokens + " tokens")
+log("  TOON: " + comparacion.toon.tokens + " tokens")
+log("  Ahorro: " + comparacion.savings.percentage + "% = " + comparacion.savings.tokens + " tokens")
+log("")
+
+log("Ahorro estimado en tokens: " + comparacion.savings.tokens + " tokens")
+log("")
+
+log("=== Agente Completado ===")
+log("Demostracion exitosa de:")
+log("  - Memoria LTM con build_memory + recall")
+log("  - Memoria STM con forget automatico")
+log("  - Sub-workflows con call()")
+log("  - Serializacion TOON para reduccion de costos")

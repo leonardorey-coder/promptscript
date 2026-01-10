@@ -1,0 +1,10 @@
+log("Sub-workflow: Base Setup iniciado")
+
+log("Creando estructura base del proyecto...")
+
+apply("WRITE_FILE", {
+  path: "demo-output/base.txt",
+  content: "Base setup completado\nTimestamp: " + "2026-01-09"
+})
+
+log("Base setup completado exitosamente")

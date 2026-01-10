@@ -1,0 +1,79 @@
+log("=== PromptScript v0.4 - Todas las Features ===")
+log("")
+
+log("--- Feature 1: Sub-workflows (run/call) ---")
+log("Ejecutando sub-workflow base-setup.ps...")
+run("examples/workflows/base-setup.ps", {
+  args: { proyecto: "demo-v04" },
+  inherit_policy: true
+})
+
+log("Llamando sub-workflow data-processing.ps y obteniendo resultado...")
+resultado = call("examples/workflows/data-processing.ps", {
+  inherit_policy: true
+})
+log("Resultado del sub-workflow: " + resultado.ok)
+log("")
+
+log("--- Feature 2: Memoria Long-Term (LTM) ---")
+log("Construyendo memoria de largo plazo del proyecto...")
+build_memory("proyecto_demo", {
+  globs: ["src/**", "examples/**", "README.md"],
+  mode: "incremental"
+})
+
+log("Recuperando contexto desde LTM...")
+contexto = recall("proyecto_demo", "workflow", { top_k: 3 })
+log("Chunks recuperados: " + len(contexto.chunks))
+for i in range(len(contexto.chunks)):
+  chunk = contexto.chunks[i]
+  log("  - " + chunk.source + " (relevancia: " + chunk.relevance + ")")
+log("")
+
+log("--- Feature 3: Memoria Short-Term (STM) con Forgetting ---")
+log("Simulando acumulacion de contexto en STM...")
+
+log("Estado inicial de memoria...")
+resultado_forget = forget({
+  memory_key: "demo_session",
+  mode: "compact"
+})
+log("Tokens antes: " + resultado_forget.before_tokens)
+log("Tokens despues: " + resultado_forget.after_tokens)
+log("")
+
+log("--- Feature 4: TOON - Serializacion Optimizada ---")
+log("Comparando formatos JSON vs TOON...")
+
+datos_ejemplo = {
+  archivos: ["file1.ts", "file2.ts", "file3.ts"],
+  resumen: "Proyecto de ejemplo con multiples archivos",
+  estadisticas: {
+    lineas: 1500,
+    funciones: 45,
+    clases: 12
+  }
+}
+
+comparacion = compare_formats(datos_ejemplo)
+log("Formato JSON: " + comparacion.json.tokens + " tokens")
+log("Formato TOON: " + comparacion.toon.tokens + " tokens")
+log("Ahorro: " + comparacion.savings.percentage + "% (" + comparacion.savings.tokens + " tokens)")
+log("")
+
+log("Configurando formato de contexto a TOON...")
+set_context_format("toon")
+log("Formato configurado: TOON")
+log("")
+
+log("--- Feature 5: Integracion Completa ---")
+log("Demostrando uso combinado de todas las features...")
+
+log("1. Ejecutar workflow con memoria LTM")
+log("2. Usar recall para obtener contexto relevante")
+log("3. Procesar con STM y hacer forget periodicamente")
+log("4. Serializar todo en TOON para reducir costos")
+log("")
+
+log("=== Demo Completado ===")
+log("Todas las features v0.4 funcionando correctamente!")

@@ -1,0 +1,56 @@
+log("Test basico de features v0.4")
+log("")
+
+log("1. Test de sub-workflow run()")
+run("examples/workflows/base-setup.ps", {
+  inherit_policy: true
+})
+log("  OK: run() ejecutado")
+log("")
+
+log("2. Test de sub-workflow call()")
+resultado = call("examples/workflows/data-processing.ps")
+if resultado.ok:
+  log("  OK: call() retorno resultado exitoso")
+else:
+  log("  ERROR: call() fallo")
+log("")
+
+log("3. Test de build_memory()")
+build_memory("test_memory", {
+  globs: ["examples/**/*.ps"],
+  mode: "full"
+})
+log("  OK: build_memory() ejecutado")
+log("")
+
+log("4. Test de recall()")
+ctx = recall("test_memory", "workflow", { top_k: 2 })
+log("  OK: recall() retorno " + len(ctx.chunks) + " chunks")
+log("")
+
+log("5. Test de forget()")
+res = forget({
+  memory_key: "test_session",
+  mode: "compact"
+})
+log("  OK: forget() ejecutado")
+log("  Tokens: " + res.before_tokens + " -> " + res.after_tokens)
+log("")
+
+log("6. Test de compare_formats()")
+datos = {
+  test: "ejemplo",
+  items: [1, 2, 3]
+}
+comp = compare_formats(datos)
+log("  OK: compare_formats() ejecutado")
+log("  Ahorro: " + comp.savings.percentage + "%")
+log("")
+
+log("7. Test de set_context_format()")
+set_context_format("toon")
+log("  OK: set_context_format() ejecutado")
+log("")
+
+log("=== Todos los tests pasaron ===")

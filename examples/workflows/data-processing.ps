@@ -1,0 +1,15 @@
+log("Sub-workflow: Data Processing iniciado")
+
+datos = ["item1", "item2", "item3"]
+
+log("Procesando " + len(datos) + " items...")
+
+for i in range(len(datos)):
+  log("  Procesando: " + datos[i])
+
+apply("WRITE_FILE", {
+  path: "demo-output/processed.txt",
+  content: "Datos procesados: " + len(datos) + " items"
+})
+
+log("Data processing completado")
