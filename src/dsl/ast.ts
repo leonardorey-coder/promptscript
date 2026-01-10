@@ -11,6 +11,8 @@ export type Stmt =
   | { type: "Timeout"; duration: Expr; body: Stmt[] }
   | { type: "Guard"; expr: Expr }
   | { type: "Assign"; name: string; value: Expr }
+  | { type: "SetAttr"; object: Expr; property: string; value: Expr }
+  | { type: "SetItem"; object: Expr; index: Expr; value: Expr }
   | { type: "Return"; value: Expr | null }
   | { type: "Break" }
   | { type: "ExprStmt"; expr: Expr };
@@ -24,6 +26,7 @@ export type Expr =
   | { type: "Obj"; pairs: { key: string; value: Expr }[] }
   | { type: "Arr"; items: Expr[] }
   | { type: "Call"; name: string; args: Expr[] }
+  | { type: "MethodCall"; object: Expr; args: Expr[] }
   | { type: "Unary"; op: "not"; expr: Expr }
   | { type: "Binary"; op: "+" | "==" | "!=" | ">" | "<" | ">=" | "<=" | "in" | "and" | "or"; left: Expr; right: Expr }
   | { type: "Member"; object: Expr; property: string }

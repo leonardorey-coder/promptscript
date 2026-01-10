@@ -59,14 +59,62 @@ export function parse(toks: Tok[]): Program {
       return { type: "Break" };
     }
 
-    // assignment? IDENT '=' ...
-    const next = toks[i + 1];
-    if (p.t === "IDENT" && next && next.t === "SYM" && "v" in next && next.v === "=") {
-      const tok = eat("IDENT");
-      const name = "v" in tok ? String(tok.v) : "";
+    // assignment? Check if we have IDENT (or postfix like IDENT.prop or IDENT[idx]) followed by '='
+    // We need to lookahead to detect assignment vs expression
+    const savedPos = i;
+    let isAssignment = false;
+    
+    // Try to detect assignment pattern
+    if (p.t === "IDENT") {
+      let j = i + 1;
+      // Skip through postfix operators (. and [])
+      while (j < toks.length) {
+        const t = toks[j];
+        if (!t) break;
+        if (t.t === "SYM" && "v" in t && t.v === ".") {
+          j++; // skip .
+          if (j < toks.length && toks[j]?.t === "IDENT") {
+            j++; // skip property name
+          }
+        } else if (t.t === "SYM" && "v" in t && t.v === "[") {
+          // Skip until matching ]
+          let depth = 1;
+          j++;
+          while (j < toks.length && depth > 0) {
+            const inner = toks[j];
+            if (inner?.t === "SYM" && "v" in inner) {
+              if (inner.v === "[") depth++;
+              else if (inner.v === "]") depth--;
+            }
+            j++;
+          }
+        } else {
+          break;
+        }
+      }
+      // Check if next token is =
+      const nextTok = toks[j];
+      if (nextTok && nextTok.t === "SYM" && "v" in nextTok && nextTok.v === "=") {
+        isAssignment = true;
+      }
+    }
+
+    if (isAssignment) {
+      // Parse the left-hand side (can be Var, Member, or Index)
+      const target = parsePostfix();
       eat("SYM", "=");
       const value = parseExpr();
-      return { type: "Assign", name, value };
+      
+      // Convert to appropriate assignment type
+      if (target.type === "Var") {
+        return { type: "Assign", name: target.name, value };
+      } else if (target.type === "Member") {
+        return { type: "SetAttr", object: target.object, property: target.property, value };
+      } else if (target.type === "Index") {
+        return { type: "SetItem", object: target.object, index: target.index, value };
+      } else {
+        throw new Error(`Parse error: invalid assignment target`);
+      }
     }
 
     // expression statement
@@ -271,7 +319,7 @@ export function parse(toks: Tok[]): Program {
     return left;
   };
 
-  // Parse postfix operators: . and []
+  // Parse postfix operators: ., [], and ()
   const parsePostfix = (): Expr => {
     let expr = parsePrimary();
 
@@ -286,6 +334,19 @@ export function parse(toks: Tok[]): Program {
         const index = parseExpr();
         eat("SYM", "]");
         expr = { type: "Index", object: expr, index };
+      } else if (at("SYM", "(")) {
+        // Method call: expr(...args)
+        eat("SYM", "(");
+        const args: Expr[] = [];
+        if (!at("SYM", ")")) {
+          args.push(parseExpr());
+          while (at("SYM", ",")) {
+            eat("SYM", ",");
+            args.push(parseExpr());
+          }
+        }
+        eat("SYM", ")");
+        expr = { type: "MethodCall", object: expr, args };
       } else {
         break;
       }

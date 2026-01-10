@@ -278,6 +278,56 @@ export class VM {
           }
           return null;
         }
+        case "MethodCall": {
+          // MethodCall represents calling the result of an expression
+          // e.g., obj.method() or arr[0]() or even (expr)()
+          
+          const callArgs: Value[] = [];
+          for (const a of e.args) callArgs.push(await evalExpr(a, env));
+
+          // Special handling for Member expressions (obj.method())
+          if (e.object.type === "Member") {
+            const obj = await evalExpr(e.object.object, env);
+            const methodName = e.object.property;
+            
+            if (obj && typeof obj === "object") {
+              const method = (obj as any)[methodName];
+              
+              // Check if it's a user-defined method (has __ps_method marker)
+              if (method && typeof method === "object" && (method as any).__ps_method) {
+                const funcDef = (method as any).func;
+                const newEnv = new Map<string, Value>();
+                newEnv.set("self", obj);
+                // Skip first parameter (self) and map remaining parameters to call arguments
+                for (let i = 1; i < funcDef.params.length; i++) {
+                  newEnv.set(funcDef.params[i] ?? "", callArgs[i - 1] ?? null);
+                }
+                try {
+                  await execBlock(funcDef.body, newEnv);
+                  return null;
+                } catch (sig) {
+                  if (sig instanceof ReturnSignal) return sig.value;
+                  throw sig;
+                }
+              }
+              
+              // Otherwise, call it as a regular function
+              if (typeof method === "function") {
+                return await method.apply(obj, callArgs);
+              }
+            }
+            
+            throw new Error(`Method '${methodName}' not found or not callable`);
+          }
+
+          // For other expressions, just evaluate and call
+          const func = await evalExpr(e.object, env);
+          if (typeof func === "function") {
+            return await func(...callArgs);
+          }
+
+          throw new Error(`Cannot call non-function value`);
+        }
         case "Binary": {
           const l = await evalExpr(e.left, env);
           const r = await evalExpr(e.right, env);
@@ -908,19 +958,57 @@ Return a REPORT action with the summary.`;
             const className = (f as any).className || e.name;
             const instance: Record<string, any> = { __ps_class_instance: true, __ps_class_name: className };
             
+            // First, collect all method definitions from the class body
+            const methods = new Map<string, { params: string[]; body: Stmt[] }>();
+            for (const stmt of f.body) {
+              if (stmt.type === "Def") {
+                methods.set(stmt.name, { params: stmt.params, body: stmt.body });
+              }
+            }
+            
+            // Attach methods to instance with __ps_method marker
+            for (const [methodName, methodDef] of methods.entries()) {
+              instance[methodName] = {
+                __ps_method: true,
+                func: methodDef,
+              };
+            }
+            
             // Create local environment with 'self' pointing to instance
             const local = new Map<string, Value>();
             local.set("self", instance);
             f.params.forEach((p, idx) => local.set(p, callArgs[idx] ?? null));
 
+            // Execute class body (for initialization code, not method definitions)
             try {
-              await execBlock(f.body, local);
-              // Bind methods to instance
-              for (const [methodName, methodFunc] of this.funcs.entries()) {
-                if (methodName.startsWith(`${className}.`) || methodName.includes("__init__")) {
-                  // Skip for now - simplified class implementation
+              for (const stmt of f.body) {
+                if (stmt.type !== "Def") {
+                  // Execute non-method statements
+                  await execStmt(stmt, local);
                 }
               }
+              
+              // Call __init__ or init if it exists
+              const initMethod = instance.__init__ || instance.init;
+              if (initMethod && typeof initMethod === "object" && initMethod.__ps_method) {
+                const funcDef = initMethod.func;
+                const initEnv = new Map<string, Value>();
+                initEnv.set("self", instance); // Ensure self points to the instance
+                // Pass constructor arguments to init (skip 'self' parameter)
+                for (let i = 1; i < funcDef.params.length; i++) {
+                  initEnv.set(funcDef.params[i] ?? "", callArgs[i - 1] ?? null);
+                }
+                try {
+                  await execBlock(funcDef.body, initEnv);
+                } catch (sig) {
+                  if (sig instanceof ReturnSignal) {
+                    // Ignore return value from __init__
+                  } else {
+                    throw sig;
+                  }
+                }
+              }
+              
               return instance;
             } catch (sig) {
               if (sig instanceof ReturnSignal) return sig.value;
@@ -963,6 +1051,27 @@ Return a REPORT action with the summary.`;
         case "Assign": {
           const v = await evalExpr(s.value, env);
           env.set(s.name, v);
+          return;
+        }
+        case "SetAttr": {
+          const obj = await evalExpr(s.object, env);
+          const val = await evalExpr(s.value, env);
+          if (obj && typeof obj === "object") {
+            obj[s.property] = val;
+          } else {
+            throw new Error(`Cannot set attribute '${s.property}' on non-object`);
+          }
+          return;
+        }
+        case "SetItem": {
+          const obj = await evalExpr(s.object, env);
+          const idx = await evalExpr(s.index, env);
+          const val = await evalExpr(s.value, env);
+          if (Array.isArray(obj) || (obj && typeof obj === "object")) {
+            obj[idx] = val;
+          } else {
+            throw new Error(`Cannot set item on non-indexable value`);
+          }
           return;
         }
         case "ExprStmt":
