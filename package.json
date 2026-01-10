@@ -10,6 +10,7 @@
     "ps": "bun run src/cli.ts"
   },
   "dependencies": {
+    "@toon-format/toon": "^2.1.0",
     "zod": "3.23.8"
   }
 }
