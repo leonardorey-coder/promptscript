@@ -6,6 +6,9 @@ import type { RunLogger, TokenUsage } from "../runtime/logger";
 import { llmCallWithMeta, LLMClient, DEFAULT_SYSTEM_PROMPT, type LLMCallResult } from "../runtime/llm";
 import { LoopDetector, type LoopState } from "../runtime/loop-detector";
 import { createInterface } from "node:readline/promises";
+import { SubworkflowExecutor, type SubworkflowOptions } from "../runtime/subworkflow";
+import { MemoryStore } from "../runtime/memory";
+import { ToonSerializer, type ContextFormat } from "../runtime/toon-serializer";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Value = any;
@@ -37,6 +40,9 @@ export class VM {
   private config: VMConfig;
   private loopDetector: LoopDetector;
   private memoryStore = new Map<string, { summary: string; objective?: string; context?: any }>();
+  private memoryStoreNew: MemoryStore;
+  private subworkflowExecutor: SubworkflowExecutor;
+  private contextFormat: ContextFormat = "json";
 
   constructor(
     private registry: ToolRegistry,
@@ -46,9 +52,19 @@ export class VM {
   ) {
     this.config = { ...DEFAULT_VM_CONFIG, ...config };
     this.loopDetector = new LoopDetector();
+    this.memoryStoreNew = new MemoryStore(this.ctx.projectRoot);
+    this.subworkflowExecutor = new SubworkflowExecutor(
+      this.ctx.projectRoot,
+      this.registry,
+      this.ctx,
+      this.logger,
+      this.config,
+    );
   }
 
   async run(program: Program): Promise<void> {
+    await this.memoryStoreNew.init();
+    
     const start = Date.now();
     let steps = 0;
     let llmCalls = 0;
@@ -947,6 +963,83 @@ Return a REPORT action with the summary.`;
             const toolArgs = (callArgs[1] ?? {}) as Record<string, unknown>;
             const out = await runToolAction(name, toolArgs);
             return out as Value;
+          }
+
+          // Sub-workflow builtins
+          if (e.name === "run") {
+            const workflowPath = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as SubworkflowOptions;
+            
+            await this.subworkflowExecutor.execute(workflowPath, opts);
+            return null;
+          }
+
+          if (e.name === "call") {
+            const workflowPath = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as SubworkflowOptions;
+            
+            const result = await this.subworkflowExecutor.execute(workflowPath, opts);
+            return result;
+          }
+
+          // Memory builtins
+          if (e.name === "build_memory") {
+            const name = String(callArgs[0] ?? "");
+            const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
+            
+            await this.memoryStoreNew.init();
+            await this.memoryStoreNew.buildMemory(name, {
+              globs: Array.isArray(opts.globs) ? opts.globs as string[] : [],
+              mode: typeof opts.mode === "string" ? opts.mode as "full" | "incremental" : "full",
+              config: typeof opts.config === "object" ? opts.config as any : undefined,
+            });
+            
+            console.log(`[ps] Memory '${name}' built`);
+            return null;
+          }
+
+          if (e.name === "recall") {
+            const name = String(callArgs[0] ?? "");
+            const query = String(callArgs[1] ?? "");
+            const opts = (callArgs[2] ?? {}) as Record<string, unknown>;
+            
+            const result = await this.memoryStoreNew.recall(name, query, {
+              top_k: typeof opts.top_k === "number" ? opts.top_k : undefined,
+            });
+            
+            return result;
+          }
+
+          if (e.name === "forget") {
+            const opts = (callArgs[0] ?? {}) as Record<string, unknown>;
+            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : "default";
+            const mode = typeof opts.mode === "string" ? opts.mode as "compact" | "reset" | "keep_last" : "compact";
+            const keepN = typeof opts.keep_n === "number" ? opts.keep_n : undefined;
+            
+            const result = await this.memoryStoreNew.forget(memoryKey, mode, { keep_n: keepN });
+            
+            console.log(`[ps] Memory forgotten: ${result.before_tokens} -> ${result.after_tokens} tokens`);
+            return result;
+          }
+
+          if (e.name === "set_context_format") {
+            const format = String(callArgs[0] ?? "json");
+            if (format !== "json" && format !== "toon") {
+              throw new Error(`Invalid context format: ${format}. Must be 'json' or 'toon'`);
+            }
+            this.contextFormat = format as ContextFormat;
+            console.log(`[ps] Context format set to: ${format}`);
+            return null;
+          }
+
+          if (e.name === "compare_formats") {
+            const obj = callArgs[0] ?? {};
+            const comparison = ToonSerializer.compareFormats(obj);
+            console.log(`[ps] Format comparison:`);
+            console.log(`  JSON: ${comparison.json.size} bytes, ${comparison.json.tokens} tokens`);
+            console.log(`  TOON: ${comparison.toon.size} bytes, ${comparison.toon.tokens} tokens`);
+            console.log(`  Savings: ${comparison.savings.percentage}% (${comparison.savings.tokens} tokens)`);
+            return comparison;
           }
 
           // user funcs

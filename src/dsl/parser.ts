@@ -13,7 +13,10 @@ export function parse(toks: Tok[]): Program {
   const at = (t: Tok["t"], v?: string): boolean => {
     const p = toks[i];
     if (!p || p.t !== t) return false;
-    if (v !== undefined && "v" in p && p.v !== v) return false;
+    if (v !== undefined) {
+      if (!("v" in p)) return false;
+      if (p.v !== v) return false;
+    }
     return true;
   };
 
