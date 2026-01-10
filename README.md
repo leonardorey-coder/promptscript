@@ -47,6 +47,16 @@ Principios de diseño
 
 ⸻
 
+Características v0.4
+
+**Nuevas Features:**
+- **Sub-workflows** - Composición con `run()` y `call()`
+- **Memoria Jerárquica** - STM/LTM con `build_memory()` y `recall()`
+- **STM Forgetting** - Compactación tipo humano con checkpoints
+- **TOON Serialization** - Reducción de tokens ~20-40%
+
+Ver [docs/v04-features.md](docs/v04-features.md) para detalles completos.
+
 Características
 
 Lenguaje (DSL)
