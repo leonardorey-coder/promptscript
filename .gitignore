@@ -6,6 +6,7 @@ out
 dist
 *.tgz
 .ps-runs
+.ps-memory
 
 # code coverage
 coverage
