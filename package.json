@@ -7,10 +7,14 @@
     "psc": "./src/cli.ts"
   },
   "scripts": {
-    "ps": "bun run src/cli.ts"
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@toon-format/toon": "^2.1.0",
     "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "prettier": "^3.7.4"
   }
 }

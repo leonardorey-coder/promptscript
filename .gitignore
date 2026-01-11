@@ -1,12 +1,14 @@
 # dependencies (bun install)
 node_modules
 
+# IDEs
+.cursor/
+.vscode/
+
 # output
 out
 dist
 *.tgz
-.ps-runs
-.ps-memory
 
 # code coverage
 coverage
@@ -35,5 +37,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Reglas de IDE
-.cursor
+# PromptScript
+.ps-runs
+.ps-memory
