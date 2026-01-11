@@ -13,13 +13,39 @@ export interface SubworkflowOptions {
   inherit_memory?: boolean;
   timeout_ms?: number;
   budget_override?: Partial<VMConfig>;
+  stage?: string;
+  return_contract?: boolean;
+}
+
+export interface QualityContract {
+  ok: boolean;
+  issues: Array<{
+    severity: "error" | "warning" | "info";
+    message: string;
+    file?: string;
+  }>;
+  evidence?: Record<string, any>;
+  metrics?: Record<string, number>;
 }
 
 export interface SubworkflowResult {
   ok: boolean;
-  report?: { message: string; filesChanged?: string[]; nextSuggestions?: string[] };
+  report?: {
+    message: string;
+    filesChanged?: string[];
+    nextSuggestions?: string[];
+  };
+  contract?: QualityContract;
   childRunId: string;
   logsPath: string;
+  stage?: string;
+  budget?: {
+    steps: number;
+    llmCalls: number;
+    tokens: number;
+    costUsd: number;
+    timeMs: number;
+  };
   error?: string;
 }
 
@@ -29,12 +55,12 @@ export class SubworkflowExecutor {
     private registry: ToolRegistry,
     private parentCtx: ToolContext,
     private parentLogger: RunLogger,
-    private parentVMConfig: VMConfig,
+    private parentVMConfig: VMConfig
   ) {}
 
   async execute(
     workflowPath: string,
-    options: SubworkflowOptions = {},
+    options: SubworkflowOptions = {}
   ): Promise<SubworkflowResult> {
     const startTime = Date.now();
     const childRunId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -60,14 +86,15 @@ export class SubworkflowExecutor {
       const childCtx: ToolContext = {
         projectRoot: this.projectRoot,
         cwd: this.parentCtx.cwd,
-        policy: options.inherit_policy !== false
-          ? { ...this.parentCtx.policy }
-          : {
-              allowTools: ["READ_FILE", "SEARCH"],
-              allowCommands: [],
-              requireApproval: false,
-              maxFileBytes: 100_000,
-            },
+        policy:
+          options.inherit_policy !== false
+            ? { ...this.parentCtx.policy }
+            : {
+                allowTools: ["READ_FILE", "SEARCH"],
+                allowCommands: [],
+                requireApproval: false,
+                maxFileBytes: 100_000,
+              },
       };
 
       const childConfig: VMConfig = {
@@ -76,18 +103,21 @@ export class SubworkflowExecutor {
       };
 
       if (options.timeout_ms) {
-        childConfig.maxTimeMs = Math.min(options.timeout_ms, childConfig.maxTimeMs);
+        childConfig.maxTimeMs = Math.min(
+          options.timeout_ms,
+          childConfig.maxTimeMs
+        );
       }
 
       const logsDir = path.join(this.projectRoot, ".ps-runs");
-      
+
       const childLogger = new RunLogger(logsDir, {
         maxSteps: childConfig.maxSteps,
         maxToolCalls: childConfig.maxToolCalls,
         maxLLMCalls: childConfig.maxLLMCalls,
         maxTokens: 1_000_000,
       });
-      
+
       await childLogger.init();
       const logsPath = childLogger.file;
 
@@ -102,14 +132,37 @@ export class SubworkflowExecutor {
       await vm.run(ast);
 
       const endTime = Date.now();
+      const budgetSnapshot = childLogger.budgetTracker.getSnapshot();
+
       const result: SubworkflowResult = {
         ok: true,
         childRunId,
         logsPath,
+        stage: options.stage,
+        budget: {
+          steps: budgetSnapshot.steps.current,
+          llmCalls: budgetSnapshot.llmCalls.current,
+          tokens: budgetSnapshot.tokens.current,
+          costUsd: budgetSnapshot.costUsd.current,
+          timeMs: endTime - startTime,
+        },
         report: {
           message: `Subworkflow completed successfully in ${endTime - startTime}ms`,
         },
       };
+
+      if (options.return_contract) {
+        result.contract = {
+          ok: true,
+          issues: [],
+          evidence: {},
+          metrics: {
+            timeMs: endTime - startTime,
+            steps: budgetSnapshot.steps.current,
+            llmCalls: budgetSnapshot.llmCalls.current,
+          },
+        };
+      }
 
       await this.parentLogger.append({
         step: 0,

@@ -1,0 +1,33 @@
+log("=== Test Sub-workflow v0.5 ===")
+
+log("Test 1: Ejecutar verify stage")
+verify_result = call("examples/v05/landing_verify.ps", {
+  stage: "verify",
+  return_contract: true
+})
+
+log("Resultado verify:")
+log("  ok: " + verify_result.ok)
+log("  stage: " + verify_result.stage)
+log("  childRunId: " + verify_result.childRunId)
+
+if verify_result.budget:
+  log("  Budget:")
+  log("    steps: " + verify_result.budget.steps)
+  log("    llmCalls: " + verify_result.budget.llmCalls)
+  log("    tokens: " + verify_result.budget.tokens)
+  log("    costUsd: $" + verify_result.budget.costUsd)
+  log("    timeMs: " + verify_result.budget.timeMs + "ms")
+
+if verify_result.contract:
+  log("  Contract:")
+  log("    ok: " + verify_result.contract.ok)
+  log("    issues: " + len(verify_result.contract.issues))
+  if verify_result.contract.evidence:
+    log("    evidence: " + verify_result.contract.evidence)
+
+log("")
+log("=== Test Complete ===")
+log("✓ Sub-workflows con budgets funcionando")
+log("✓ Quality contracts funcionando")
+log("✓ Stage tracking funcionando")

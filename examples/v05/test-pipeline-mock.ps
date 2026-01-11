@@ -1,0 +1,50 @@
+log("╔════════════════════════════════════════╗")
+log("║  Landing Page Pipeline v0.5 (Mock)    ║")
+log("║  Quality-gated CI humana               ║")
+log("╚════════════════════════════════════════╝")
+log("")
+
+log("Stage 1: Verify (deterministic checks)")
+verify_result = call("examples/v05/landing_verify.ps", {
+  stage: "verify",
+  return_contract: true
+})
+
+log("✓ Verify complete")
+log("  Budget: " + verify_result.budget.llmCalls + " LLM calls, $" + verify_result.budget.costUsd)
+log("  Contract ok: " + verify_result.contract.ok)
+log("  Issues: " + len(verify_result.contract.issues))
+log("")
+
+if verify_result.contract.ok:
+  log("✓ Verification passed")
+  log("  Evidence:")
+  if verify_result.contract.evidence:
+    log("    has_doctype: " + verify_result.contract.evidence.has_doctype)
+    log("    has_viewport: " + verify_result.contract.evidence.has_viewport)
+    log("    has_media_queries: " + verify_result.contract.evidence.has_media_queries)
+    log("    has_semantic_html: " + verify_result.contract.evidence.has_semantic_html)
+else:
+  log("✗ Verification failed with " + len(verify_result.contract.issues) + " issues")
+  for i in range(len(verify_result.contract.issues)):
+    issue = verify_result.contract.issues[i]
+    log("  [" + issue.severity + "] " + issue.message)
+
+log("")
+log("╔════════════════════════════════════════╗")
+log("║  Pipeline Complete                     ║")
+log("╚════════════════════════════════════════╝")
+
+log("Total LLM calls: " + verify_result.budget.llmCalls)
+log("Total cost: $" + verify_result.budget.costUsd)
+log("Total time: " + verify_result.budget.timeMs + "ms")
+log("")
+log("Artifacts:")
+log("  - public/landing.html")
+log("  - public/landing.css")
+log("")
+log("Features v0.5 probadas:")
+log("  ✓ Sub-workflows con budgets por stage")
+log("  ✓ Quality contracts estructurados")
+log("  ✓ Stage tracking")
+log("  ✓ Replay encadenado (ver logs)")

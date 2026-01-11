@@ -1,0 +1,29 @@
+system = "Eres un desarrollador que hace fixes minimos y precisos."
+
+client = LLMClient({
+  provider: "openrouter",
+  model: "anthropic/claude-sonnet-4",
+  no_ask: true
+})
+
+log("=== Landing Fix Stage ===")
+log("Objetivo: Reparar issues encontrados en verify")
+
+run_agent(client, "Revisa public/landing.html y public/landing.css y corrige SOLO los problemas criticos:
+
+Checklist:
+- Asegurar DOCTYPE correcto
+- Agregar viewport meta tag si falta
+- Agregar media queries basicas si faltan
+- Usar elementos semanticos (header, footer, main, section)
+- Minimos cambios necesarios
+
+Usa PATCH_FILE para cambios quirurgicos.
+", {
+  max_iterations: 5,
+  require_write: true,
+  stop_on_report: true,
+  context_files: ["public/landing.html", "public/landing.css"]
+})
+
+log("=== Fix Stage Complete ===")

@@ -42,9 +42,16 @@ Principios de diseño 1. El DSL controla el flujo 2. El LLM no controla la ejecu
 
 ⸻
 
-Características v0.4
+Características v0.5
 
 **Nuevas Features:**
+
+- **Sub-workflows Mejorados** - Budgets por stage, replay encadenado
+- **Quality Contracts** - Sistema de contratos estructurados para verificación
+- **Memoria por Stage** - Checkpoints limpios y forgetting por etapa
+- **Pipeline Pattern** - Patrón canónico para CI humana (build → verify → fix)
+
+**Features v0.4:**
 
 - **Sub-workflows** - Composición con `run()` y `call()`
 - **Memoria Jerárquica** - STM/LTM con `build_memory()` y `recall()`
@@ -54,7 +61,7 @@ Características v0.4
 - **Archive Memory** - Archivar STM a LTM con `archive()`
 - **Approvals** - Sistema de aprobación para acciones críticas
 
-Ver [docs/v04-features.md](docs/v04-features.md) para detalles completos.
+Ver [docs/v05-features.md](docs/v05-features.md) y [docs/v04-features.md](docs/v04-features.md) para detalles completos.
 
 Características
 

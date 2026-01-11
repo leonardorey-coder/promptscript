@@ -1,0 +1,30 @@
+system = "Eres un especialista en diseño responsive y UX mobile."
+
+client = LLMClient({
+  provider: "openrouter",
+  model: "anthropic/claude-sonnet-4",
+  no_ask: true
+})
+
+log("=== Landing Responsive Stage ===")
+log("Objetivo: Optimizar para mobile y tablet")
+
+run_agent(client, "Revisa y mejora el responsive de public/landing.html y public/landing.css:
+
+Requisitos:
+- Media queries para mobile (< 768px) y tablet (768-1024px)
+- Menu hamburguesa en mobile
+- Imagenes responsive
+- Touch-friendly buttons (min 44px)
+- Tipografia escalable (rem/em)
+- Test en diferentes viewports
+
+Modifica los archivos existentes con PATCH_FILE.
+", {
+  max_iterations: 8,
+  require_write: true,
+  stop_on_report: true,
+  context_files: ["public/landing.html", "public/landing.css"]
+})
+
+log("=== Responsive Stage Complete ===")

@@ -1,0 +1,53 @@
+log("=== Landing Verify Stage ===")
+log("Objetivo: Verificacion deterministica de calidad")
+
+issues = []
+
+html_content = apply("READ_FILE", { path: "public/landing.html" })
+css_content = apply("READ_FILE", { path: "public/landing.css" })
+
+if not ("<!DOCTYPE html>" in html_content):
+  issues = issues + [{ severity: "error", message: "Missing DOCTYPE", file: "landing.html" }]
+
+if not ("<meta name=\"viewport\"" in html_content):
+  issues = issues + [{ severity: "error", message: "Missing viewport meta tag", file: "landing.html" }]
+
+if not ("@media" in css_content):
+  issues = issues + [{ severity: "warning", message: "No media queries found", file: "landing.css" }]
+
+if not ("<header" in html_content):
+  issues = issues + [{ severity: "error", message: "Missing header element", file: "landing.html" }]
+
+if not ("<footer" in html_content):
+  issues = issues + [{ severity: "warning", message: "Missing footer element", file: "landing.html" }]
+
+if len(issues) == 0:
+  log("✓ All checks passed")
+  contract = {
+    ok: true,
+    issues: [],
+    evidence: {
+      has_doctype: true,
+      has_viewport: true,
+      has_media_queries: true,
+      has_semantic_html: true
+    },
+    metrics: {
+      html_size: len(html_content),
+      css_size: len(css_content)
+    }
+  }
+else:
+  log("✗ Found " + len(issues) + " issues")
+  for i in range(len(issues)):
+    issue = issues[i]
+    log("  [" + issue.severity + "] " + issue.message + " (" + issue.file + ")")
+  
+  contract = {
+    ok: false,
+    issues: issues,
+    evidence: {},
+    metrics: {}
+  }
+
+log("=== Verify Stage Complete ===")

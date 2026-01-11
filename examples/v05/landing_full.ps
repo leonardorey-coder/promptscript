@@ -1,0 +1,76 @@
+log("╔════════════════════════════════════════╗")
+log("║  Landing Page Pipeline v0.5            ║")
+log("║  Quality-gated CI humana               ║")
+log("╚════════════════════════════════════════╝")
+log("")
+
+log("Stage 1: Build (creativo)")
+build_result = call("examples/v05/landing_build.ps", {
+  stage: "build",
+  return_contract: true
+})
+
+log("✓ Build complete")
+log("  Budget: " + build_result.budget.llmCalls + " LLM calls, $" + build_result.budget.costUsd)
+log("")
+
+log("Stage 2: Responsive (UX/mobile)")
+responsive_result = call("examples/v05/landing_responsive.ps", {
+  stage: "responsive",
+  return_contract: true
+})
+
+log("✓ Responsive complete")
+log("  Budget: " + responsive_result.budget.llmCalls + " LLM calls, $" + responsive_result.budget.costUsd)
+log("")
+
+log("Stage 3: Verify (deterministic checks)")
+verify_result = call("examples/v05/landing_verify.ps", {
+  stage: "verify",
+  return_contract: true
+})
+
+if verify_result.contract.ok:
+  log("✓ Verification passed")
+  log("  Evidence: " + verify_result.contract.evidence)
+else:
+  log("✗ Verification failed with " + len(verify_result.contract.issues) + " issues")
+  log("")
+  
+  log("Stage 4: Fix (patch minimo)")
+  fix_result = call("examples/v05/landing_fix.ps", {
+    stage: "fix",
+    return_contract: true
+  })
+  
+  log("✓ Fix complete")
+  log("  Budget: " + fix_result.budget.llmCalls + " LLM calls, $" + fix_result.budget.costUsd)
+  log("")
+  
+  log("Stage 5: Re-verify")
+  reverify_result = call("examples/v05/landing_verify.ps", {
+    stage: "reverify",
+    return_contract: true
+  })
+  
+  if reverify_result.contract.ok:
+    log("✓ Re-verification passed")
+  else:
+    log("✗ Re-verification still has issues - manual review needed")
+
+log("")
+log("╔════════════════════════════════════════╗")
+log("║  Pipeline Complete                     ║")
+log("╚════════════════════════════════════════╝")
+
+total_cost = build_result.budget.costUsd + responsive_result.budget.costUsd
+total_llm = build_result.budget.llmCalls + responsive_result.budget.llmCalls
+
+log("Total LLM calls: " + total_llm)
+log("Total cost: $" + total_cost)
+log("")
+log("Artifacts:")
+log("  - public/landing.html")
+log("  - public/landing.css")
+log("")
+log("Replay: psc replay <runId>")

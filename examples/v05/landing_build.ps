@@ -1,0 +1,29 @@
+system = "Eres un desarrollador creativo especializado en landing pages modernas."
+
+client = LLMClient({
+  provider: "openrouter",
+  model: "anthropic/claude-sonnet-4",
+  no_ask: true
+})
+
+log("=== Landing Build Stage ===")
+log("Objetivo: Crear estructura HTML/CSS base de landing page")
+
+run_agent(client, "Crea una landing page moderna con:
+- Header con logo y navegacion
+- Hero section con CTA
+- Features section (3 columnas)
+- Footer
+- Estilos CSS modernos con gradientes
+- Diseño mobile-first
+
+Archivos a crear:
+- public/landing.html
+- public/landing.css
+", {
+  max_iterations: 10,
+  require_write: true,
+  stop_on_report: true
+})
+
+log("=== Build Stage Complete ===")
