@@ -756,7 +756,6 @@ export class VM {
 
               const plan = await runLLMPlan(input, client);
 
-              // Execute the action with error handling
               let actionResult: Value;
               let actionError: string | null = null;
               
@@ -769,6 +768,21 @@ export class VM {
                 actionError = err instanceof Error ? err.message : String(err);
                 actionResult = null;
                 console.log(`[ps] Action error: ${actionError}`);
+              }
+
+              const loopState = this.loopDetector.record(plan, !actionError);
+              if (loopState.loopDetected) {
+                console.log(`[ps] Loop detected: ${loopState.loopType}`);
+                console.log(`[ps] ${loopState.suggestion}`);
+                
+                if (loopState.loopType === "action_cycle" || loopState.loopType === "exact_repeat") {
+                  currentPrompt = `LOOP DETECTED: You are repeating the same actions. ${loopState.suggestion}\n\nChange your strategy:\n- If you've been reading and writing the same file repeatedly, STOP and use REPORT with done=true.\n- If you've verified the changes are correct, complete the task with REPORT.\n- If something is wrong, try a completely different approach.`;
+                  continue;
+                }
+                
+                if (this.config.haltOnLoop) {
+                  throw new Error(`Loop detected and haltOnLoop is enabled: ${loopState.loopType}`);
+                }
               }
 
               // Add to history for context (keep it compact)

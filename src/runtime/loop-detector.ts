@@ -36,7 +36,7 @@ interface ActionFingerprint {
 const DEFAULT_CONFIG: LoopDetectorConfig = {
   windowSize: 20,
   similarityThreshold: 0.9,
-  maxRepeats: 3,
+  maxRepeats: 4,
   maxConsecutiveFailures: 5,
 };
 
@@ -178,7 +178,6 @@ export class LoopDetector {
     const actions = this.state.recentActions;
     if (actions.length < 4) return null;
 
-    // Check for patterns of length 2, 3, 4
     for (let patternLen = 2; patternLen <= 4; patternLen++) {
       if (actions.length < patternLen * 2) continue;
 
@@ -186,7 +185,6 @@ export class LoopDetector {
       const prev = actions.slice(-patternLen * 2, -patternLen).map((a) => a.action);
 
       if (JSON.stringify(pattern) === JSON.stringify(prev)) {
-        // Check if it repeated more than twice
         let repeats = 2;
         for (let i = actions.length - patternLen * 3; i >= 0; i -= patternLen) {
           const segment = actions.slice(i, i + patternLen).map((a) => a.action);
@@ -197,7 +195,7 @@ export class LoopDetector {
           }
         }
 
-        if (repeats >= 2) {
+        if (repeats >= 3) {
           return { pattern, length: patternLen };
         }
       }
