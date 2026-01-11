@@ -66,14 +66,61 @@ set_context_format("toon")
 log("Formato configurado: TOON")
 log("")
 
-log("--- Feature 5: Integracion Completa ---")
+log("--- Feature 5: RECALL Tool ---")
+log("Tool disponible para que agentes invoquen RECALL explicitamente")
+log("")
+
+log("El agente puede usar durante run_agent:")
+log("  RECALL { memory_name: 'proyecto_demo', query: 'workflow', top_k: 5 }")
+log("")
+
+log("Tambien disponible como apply directo:")
+resultado_recall = apply("RECALL", {
+  memory_name: "proyecto_demo",
+  query: "memoria",
+  top_k: 3
+})
+log("RECALL tool ejecutado: " + len(resultado_recall.chunks) + " chunks")
+log("")
+
+log("--- Feature 6: Archive Memory ---")
+log("Archivar STM a LTM y limpiar")
+log("")
+
+resultado_archive = archive({
+  memory_key: "demo_session",
+  to_ltm: "proyecto_demo",
+  clear_stm: false
+})
+log("Archivado: " + resultado_archive.archived)
+log("Eventos archivados: " + resultado_archive.events_count)
+log("")
+
+log("--- Feature 7: Approvals ---")
+log("Sistema de aprobacion para acciones criticas")
+log("")
+
+log("Para activar approvals:")
+log("  psc run examples/v04-all-features.ps --require-approval")
+log("")
+
+log("Acciones que requieren aprobacion:")
+log("  - WRITE_FILE")
+log("  - PATCH_FILE")
+log("  - RUN_CMD")
+log("")
+
+log("--- Integracion Completa ---")
 log("Demostrando uso combinado de todas las features...")
+log("")
 
 log("1. Ejecutar workflow con memoria LTM")
-log("2. Usar recall para obtener contexto relevante")
+log("2. Usar recall() o RECALL tool para obtener contexto")
 log("3. Procesar con STM y hacer forget periodicamente")
-log("4. Serializar todo en TOON para reducir costos")
+log("4. Archivar STM a LTM con archive()")
+log("5. Serializar todo en TOON para reducir costos")
+log("6. Usar approvals para acciones criticas")
 log("")
 
 log("=== Demo Completado ===")
-log("Todas las features v0.4 funcionando correctamente!")
+log("Todas las 7 features v0.4 funcionando correctamente!")

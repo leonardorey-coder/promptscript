@@ -3,10 +3,18 @@ import type { Plan } from "../runtime/plan";
 import { PlanSchema } from "../runtime/plan";
 import type { ToolRegistry, ToolContext } from "../runtime/tools";
 import type { RunLogger, TokenUsage } from "../runtime/logger";
-import { llmCallWithMeta, LLMClient, DEFAULT_SYSTEM_PROMPT, type LLMCallResult } from "../runtime/llm";
+import {
+  llmCallWithMeta,
+  LLMClient,
+  DEFAULT_SYSTEM_PROMPT,
+  type LLMCallResult,
+} from "../runtime/llm";
 import { LoopDetector, type LoopState } from "../runtime/loop-detector";
 import { createInterface } from "node:readline/promises";
-import { SubworkflowExecutor, type SubworkflowOptions } from "../runtime/subworkflow";
+import {
+  SubworkflowExecutor,
+  type SubworkflowOptions,
+} from "../runtime/subworkflow";
 import { MemoryStore } from "../runtime/memory";
 import { ToonSerializer, type ContextFormat } from "../runtime/toon-serializer";
 
@@ -25,6 +33,7 @@ export interface VMConfig {
   maxLLMCalls: number;
   haltOnLoop: boolean;
   loopWarningCallback?: (state: LoopState) => void;
+  approvalCallback?: (action: string, args: any) => Promise<boolean>;
 }
 
 const DEFAULT_VM_CONFIG: VMConfig = {
@@ -39,7 +48,10 @@ export class VM {
   private funcs = new Map<string, { params: string[]; body: Stmt[] }>();
   private config: VMConfig;
   private loopDetector: LoopDetector;
-  private memoryStore = new Map<string, { summary: string; objective?: string; context?: any }>();
+  private memoryStore = new Map<
+    string,
+    { summary: string; objective?: string; context?: any }
+  >();
   private memoryStoreNew: MemoryStore;
   private subworkflowExecutor: SubworkflowExecutor;
   private contextFormat: ContextFormat = "json";
@@ -48,7 +60,7 @@ export class VM {
     private registry: ToolRegistry,
     private ctx: ToolContext,
     private logger: RunLogger,
-    config: Partial<VMConfig> = {},
+    config: Partial<VMConfig> = {}
   ) {
     this.config = { ...DEFAULT_VM_CONFIG, ...config };
     this.loopDetector = new LoopDetector();
@@ -58,13 +70,13 @@ export class VM {
       this.registry,
       this.ctx,
       this.logger,
-      this.config,
+      this.config
     );
   }
 
   async run(program: Program): Promise<void> {
     await this.memoryStoreNew.init();
-    
+
     const start = Date.now();
     let steps = 0;
     let llmCalls = 0;
@@ -77,19 +89,30 @@ export class VM {
       }
 
       // Also check VM-level budgets
-      if (steps > this.config.maxSteps) throw new Error("BudgetExceeded: maxSteps");
-      if (Date.now() - start > this.config.maxTimeMs) throw new Error("BudgetExceeded: maxTimeMs");
-      if (llmCalls > this.config.maxLLMCalls) throw new Error("BudgetExceeded: maxLLMCalls");
+      if (steps > this.config.maxSteps)
+        throw new Error("BudgetExceeded: maxSteps");
+      if (Date.now() - start > this.config.maxTimeMs)
+        throw new Error("BudgetExceeded: maxTimeMs");
+      if (llmCalls > this.config.maxLLMCalls)
+        throw new Error("BudgetExceeded: maxLLMCalls");
     };
 
     const step = async (detail: string) => {
       steps++;
       this.logger.budgetTracker.incrementStep();
-      await this.logger.append({ step: steps, type: "stmt", detail, ts: new Date().toISOString() });
+      await this.logger.append({
+        step: steps,
+        type: "stmt",
+        detail,
+        ts: new Date().toISOString(),
+      });
       await checkBudgets();
     };
 
-    const runToolAction = async (name: string, toolArgs: Record<string, unknown>) => {
+    const runToolAction = async (
+      name: string,
+      toolArgs: Record<string, unknown>
+    ) => {
       this.logger.budgetTracker.incrementToolCall();
 
       if (!this.ctx.policy.allowTools.includes(name)) {
@@ -99,7 +122,22 @@ export class VM {
       const tool = this.registry.get(name);
       const parsed = tool.schema.parse(toolArgs);
 
-      const out = await tool.run(this.ctx, parsed);
+      let out = await tool.run(this.ctx, parsed);
+
+      if (name === "RECALL" && parsed && typeof parsed === "object") {
+        const recallArgs = parsed as {
+          memory_name: string;
+          query: string;
+          top_k?: number;
+        };
+        const result = await this.memoryStoreNew.recall(
+          recallArgs.memory_name,
+          recallArgs.query,
+          { top_k: recallArgs.top_k }
+        );
+        out = result;
+      }
+
       await this.logger.append({
         step: steps,
         type: "tool",
@@ -120,7 +158,10 @@ export class VM {
       );
     };
 
-    const runLLMPlan = async (input: any, clientOverride?: LLMClient): Promise<Plan> => {
+    const runLLMPlan = async (
+      input: any,
+      clientOverride?: LLMClient
+    ): Promise<Plan> => {
       llmCalls++;
 
       // Inject memory context if memory_key is provided
@@ -128,7 +169,7 @@ export class VM {
       if (typeof input.memory_key === "string") {
         const memoryKey = input.memory_key;
         const memory = this.memoryStore.get(memoryKey);
-        
+
         if (memory) {
           const contextParts = [enhancedInput.system || ""];
           contextParts.push("\n--- Memory Context ---");
@@ -139,7 +180,7 @@ export class VM {
             contextParts.push(`Previous context: ${memory.summary}`);
           }
           contextParts.push("--- End Memory ---\n");
-          
+
           enhancedInput.system = contextParts.join("\n");
         }
       }
@@ -193,7 +234,7 @@ export class VM {
         await this.logger.logLoopWarning(
           steps,
           loopState.loopType ?? "unknown",
-          loopState.suggestion ?? "No suggestion available",
+          loopState.suggestion ?? "No suggestion available"
         );
 
         if (this.config.loopWarningCallback) {
@@ -201,7 +242,9 @@ export class VM {
         }
 
         if (this.config.haltOnLoop) {
-          throw new Error(`LoopDetected: ${loopState.loopType} - ${loopState.suggestion}`);
+          throw new Error(
+            `LoopDetected: ${loopState.loopType} - ${loopState.suggestion}`
+          );
         }
       }
 
@@ -210,12 +253,54 @@ export class VM {
 
     const applyPlan = async (
       planInput: Plan,
-      config?: { allowActions?: string[]; logReport?: boolean; returnReport?: boolean },
+      config?: {
+        allowActions?: string[];
+        logReport?: boolean;
+        returnReport?: boolean;
+      }
     ): Promise<Value> => {
       const plan = PlanSchema.parse(planInput);
       const allowActions = config?.allowActions;
       if (allowActions && !allowActions.includes(plan.action)) {
         throw new Error(`Action not allowed by apply_plan: ${plan.action}`);
+      }
+
+      if (this.ctx.policy.requireApproval && this.config.approvalCallback) {
+        const actionNeedsApproval = [
+          "WRITE_FILE",
+          "PATCH_FILE",
+          "RUN_CMD",
+        ].includes(plan.action);
+
+        if (actionNeedsApproval) {
+          console.log(`[ps] Approval required for action: ${plan.action}`);
+          await this.logger.append({
+            step: steps,
+            type: "approval_request",
+            action: plan.action,
+            args: plan.args,
+            ts: new Date().toISOString(),
+          } as any);
+
+          const approved = await this.config.approvalCallback(
+            plan.action,
+            plan.args
+          );
+
+          await this.logger.append({
+            step: steps,
+            type: "approval_response",
+            action: plan.action,
+            approved,
+            ts: new Date().toISOString(),
+          } as any);
+
+          if (!approved) {
+            throw new Error(`Action rejected by approval: ${plan.action}`);
+          }
+
+          console.log(`[ps] Action approved: ${plan.action}`);
+        }
       }
 
       switch (plan.action) {
@@ -224,13 +309,16 @@ export class VM {
         case "WRITE_FILE":
         case "PATCH_FILE":
         case "RUN_CMD":
-          return await runToolAction(plan.action, plan.args as Record<string, unknown>);
+          return await runToolAction(
+            plan.action,
+            plan.args as Record<string, unknown>
+          );
         case "REPORT": {
           const msg = (plan.args as any)?.message;
           if (config?.logReport !== false && msg !== undefined) {
             console.log("[ps]", msg);
           }
-          return config?.returnReport === false ? null : msg ?? null;
+          return config?.returnReport === false ? null : (msg ?? null);
         }
         case "ASK_USER": {
           const question = (plan.args as any)?.question ?? "";
@@ -242,7 +330,10 @@ export class VM {
             Array.isArray(choices) && choices.length > 0
               ? `A[${choices.join("|")}]: `
               : "A[options|other option]: ";
-          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          const rl = createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
           const answer = await rl.question(promptLabel);
           rl.close();
           return answer;
@@ -252,7 +343,10 @@ export class VM {
       }
     };
 
-    const evalExpr = async (e: Expr, env: Map<string, Value>): Promise<Value> => {
+    const evalExpr = async (
+      e: Expr,
+      env: Map<string, Value>
+    ): Promise<Value> => {
       switch (e.type) {
         case "Num":
           return e.value;
@@ -297,7 +391,7 @@ export class VM {
         case "MethodCall": {
           // MethodCall represents calling the result of an expression
           // e.g., obj.method() or arr[0]() or even (expr)()
-          
+
           const callArgs: Value[] = [];
           for (const a of e.args) callArgs.push(await evalExpr(a, env));
 
@@ -305,12 +399,16 @@ export class VM {
           if (e.object.type === "Member") {
             const obj = await evalExpr(e.object.object, env);
             const methodName = e.object.property;
-            
+
             if (obj && typeof obj === "object") {
               const method = (obj as any)[methodName];
-              
+
               // Check if it's a user-defined method (has __ps_method marker)
-              if (method && typeof method === "object" && (method as any).__ps_method) {
+              if (
+                method &&
+                typeof method === "object" &&
+                (method as any).__ps_method
+              ) {
                 const funcDef = (method as any).func;
                 const newEnv = new Map<string, Value>();
                 newEnv.set("self", obj);
@@ -326,13 +424,13 @@ export class VM {
                   throw sig;
                 }
               }
-              
+
               // Otherwise, call it as a regular function
               if (typeof method === "function") {
                 return await method.apply(obj, callArgs);
               }
             }
-            
+
             throw new Error(`Method '${methodName}' not found or not callable`);
           }
 
@@ -387,7 +485,11 @@ export class VM {
           for (const a of e.args) callArgs.push(await evalExpr(a, env));
 
           const maybeCallable = env.get(e.name);
-          if (maybeCallable && typeof maybeCallable === "object" && (maybeCallable as any).__ps_llm_client) {
+          if (
+            maybeCallable &&
+            typeof maybeCallable === "object" &&
+            (maybeCallable as any).__ps_llm_client
+          ) {
             const prompt = String(callArgs[0] ?? "");
             const client = (maybeCallable as any).client as LLMClient;
             const mockPlan = (maybeCallable as any).mockPlan;
@@ -464,8 +566,14 @@ export class VM {
             const prompt = String(callArgs[0] ?? "");
             const cfg = (callArgs[1] ?? {}) as Record<string, unknown>;
 
-            const baseSystem = typeof cfg.system === "string" ? cfg.system : DEFAULT_SYSTEM_PROMPT;
-            const system = applyNoAsk(baseSystem, typeof cfg.no_ask === "boolean" ? cfg.no_ask : undefined);
+            const baseSystem =
+              typeof cfg.system === "string"
+                ? cfg.system
+                : DEFAULT_SYSTEM_PROMPT;
+            const system = applyNoAsk(
+              baseSystem,
+              typeof cfg.no_ask === "boolean" ? cfg.no_ask : undefined
+            );
             const input: Record<string, unknown> = {
               system,
               user: prompt,
@@ -476,18 +584,27 @@ export class VM {
             if (cfg.mock_plan) input.mock_plan = cfg.mock_plan;
 
             const overrides: Record<string, unknown> = {};
-            if (typeof cfg.provider === "string") overrides.provider = cfg.provider;
+            if (typeof cfg.provider === "string")
+              overrides.provider = cfg.provider;
             if (typeof cfg.apiKey === "string") overrides.apiKey = cfg.apiKey;
-            if (typeof cfg.baseUrl === "string") overrides.baseUrl = cfg.baseUrl;
+            if (typeof cfg.baseUrl === "string")
+              overrides.baseUrl = cfg.baseUrl;
             if (typeof cfg.model === "string") overrides.model = cfg.model;
-            if (typeof cfg.temperature === "number") overrides.temperature = cfg.temperature;
-            if (typeof cfg.maxTokens === "number") overrides.maxTokens = cfg.maxTokens;
-            if (typeof cfg.maxRetries === "number") overrides.maxRetries = cfg.maxRetries;
-            if (typeof cfg.retryDelayMs === "number") overrides.retryDelayMs = cfg.retryDelayMs;
-            if (typeof cfg.timeoutMs === "number") overrides.timeoutMs = cfg.timeoutMs;
+            if (typeof cfg.temperature === "number")
+              overrides.temperature = cfg.temperature;
+            if (typeof cfg.maxTokens === "number")
+              overrides.maxTokens = cfg.maxTokens;
+            if (typeof cfg.maxRetries === "number")
+              overrides.maxRetries = cfg.maxRetries;
+            if (typeof cfg.retryDelayMs === "number")
+              overrides.retryDelayMs = cfg.retryDelayMs;
+            if (typeof cfg.timeoutMs === "number")
+              overrides.timeoutMs = cfg.timeoutMs;
 
             const useOverrides = Object.keys(overrides).length > 0;
-            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+            const clientOverride = useOverrides
+              ? new LLMClient(overrides as any)
+              : undefined;
 
             const plan = await runLLMPlan(input, clientOverride);
             return plan as unknown as Value;
@@ -532,9 +649,15 @@ export class VM {
             const planInput = callArgs[0];
             const cfg = (callArgs[1] ?? {}) as Record<string, unknown>;
             const result = await applyPlan(planInput, {
-              allowActions: Array.isArray(cfg.allowActions) ? (cfg.allowActions as string[]) : undefined,
-              logReport: typeof cfg.logReport === "boolean" ? cfg.logReport : undefined,
-              returnReport: typeof cfg.returnReport === "boolean" ? cfg.returnReport : undefined,
+              allowActions: Array.isArray(cfg.allowActions)
+                ? (cfg.allowActions as string[])
+                : undefined,
+              logReport:
+                typeof cfg.logReport === "boolean" ? cfg.logReport : undefined,
+              returnReport:
+                typeof cfg.returnReport === "boolean"
+                  ? cfg.returnReport
+                  : undefined,
             });
             return result as Value;
           }
@@ -542,32 +665,48 @@ export class VM {
           if (e.name === "plan") {
             const prompt = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
-            
-            const baseSystem = typeof opts.system === "string" ? opts.system : DEFAULT_SYSTEM_PROMPT;
-            const system = applyNoAsk(baseSystem, typeof opts.no_ask === "boolean" ? opts.no_ask : undefined);
+
+            const baseSystem =
+              typeof opts.system === "string"
+                ? opts.system
+                : DEFAULT_SYSTEM_PROMPT;
+            const system = applyNoAsk(
+              baseSystem,
+              typeof opts.no_ask === "boolean" ? opts.no_ask : undefined
+            );
             const input: Record<string, unknown> = {
               system,
               user: prompt,
             };
 
             if (typeof opts.context === "string") input.context = opts.context;
-            if (typeof opts.memory_key === "string") input.memory_key = opts.memory_key;
+            if (typeof opts.memory_key === "string")
+              input.memory_key = opts.memory_key;
             if (opts.mock_plan) input.mock_plan = opts.mock_plan;
 
             // Create client override if needed
             const overrides: Record<string, unknown> = {};
-            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.provider === "string")
+              overrides.provider = opts.provider;
             if (typeof opts.apiKey === "string") overrides.apiKey = opts.apiKey;
-            if (typeof opts.baseUrl === "string") overrides.baseUrl = opts.baseUrl;
+            if (typeof opts.baseUrl === "string")
+              overrides.baseUrl = opts.baseUrl;
             if (typeof opts.model === "string") overrides.model = opts.model;
-            if (typeof opts.temperature === "number") overrides.temperature = opts.temperature;
-            if (typeof opts.maxTokens === "number") overrides.maxTokens = opts.maxTokens;
-            if (typeof opts.maxRetries === "number") overrides.maxRetries = opts.maxRetries;
-            if (typeof opts.retryDelayMs === "number") overrides.retryDelayMs = opts.retryDelayMs;
-            if (typeof opts.timeoutMs === "number") overrides.timeoutMs = opts.timeoutMs;
+            if (typeof opts.temperature === "number")
+              overrides.temperature = opts.temperature;
+            if (typeof opts.maxTokens === "number")
+              overrides.maxTokens = opts.maxTokens;
+            if (typeof opts.maxRetries === "number")
+              overrides.maxRetries = opts.maxRetries;
+            if (typeof opts.retryDelayMs === "number")
+              overrides.retryDelayMs = opts.retryDelayMs;
+            if (typeof opts.timeoutMs === "number")
+              overrides.timeoutMs = opts.timeoutMs;
 
             const useOverrides = Object.keys(overrides).length > 0;
-            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+            const clientOverride = useOverrides
+              ? new LLMClient(overrides as any)
+              : undefined;
 
             const plan = await runLLMPlan(input, clientOverride);
             return plan as unknown as Value;
@@ -577,32 +716,45 @@ export class VM {
             // Sugar for apply(plan(prompt))
             const prompt = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
-            
+
             // First generate plan
-            const baseSystem = typeof opts.system === "string" ? opts.system : DEFAULT_SYSTEM_PROMPT;
-            const system = applyNoAsk(baseSystem, typeof opts.no_ask === "boolean" ? opts.no_ask : undefined);
+            const baseSystem =
+              typeof opts.system === "string"
+                ? opts.system
+                : DEFAULT_SYSTEM_PROMPT;
+            const system = applyNoAsk(
+              baseSystem,
+              typeof opts.no_ask === "boolean" ? opts.no_ask : undefined
+            );
             const input: Record<string, unknown> = {
               system,
               user: prompt,
             };
 
             if (typeof opts.context === "string") input.context = opts.context;
-            if (typeof opts.memory_key === "string") input.memory_key = opts.memory_key;
+            if (typeof opts.memory_key === "string")
+              input.memory_key = opts.memory_key;
             if (opts.mock_plan) input.mock_plan = opts.mock_plan;
 
             const overrides: Record<string, unknown> = {};
-            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.provider === "string")
+              overrides.provider = opts.provider;
             if (typeof opts.apiKey === "string") overrides.apiKey = opts.apiKey;
-            if (typeof opts.baseUrl === "string") overrides.baseUrl = opts.baseUrl;
+            if (typeof opts.baseUrl === "string")
+              overrides.baseUrl = opts.baseUrl;
             if (typeof opts.model === "string") overrides.model = opts.model;
-            if (typeof opts.temperature === "number") overrides.temperature = opts.temperature;
-            if (typeof opts.maxTokens === "number") overrides.maxTokens = opts.maxTokens;
+            if (typeof opts.temperature === "number")
+              overrides.temperature = opts.temperature;
+            if (typeof opts.maxTokens === "number")
+              overrides.maxTokens = opts.maxTokens;
 
             const useOverrides = Object.keys(overrides).length > 0;
-            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
+            const clientOverride = useOverrides
+              ? new LLMClient(overrides as any)
+              : undefined;
 
             const plan = await runLLMPlan(input, clientOverride);
-            
+
             // Then apply it
             const result = await applyPlan(plan, {
               logReport: true,
@@ -631,55 +783,62 @@ export class VM {
             const items = Array.isArray(callArgs[0]) ? callArgs[0] : [];
             const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
             const max = typeof opts.max === "number" ? opts.max : 4;
-            const failFast = typeof opts.fail_fast === "boolean" ? opts.fail_fast : true;
-            
+            const failFast =
+              typeof opts.fail_fast === "boolean" ? opts.fail_fast : true;
+
             // Restrict to safe actions in v0.3
             const safeActions = new Set(["READ_FILE", "SEARCH"]);
-            
-            const results: Array<{ ok: boolean; value?: any; error?: string }> = [];
+
+            const results: Array<{ ok: boolean; value?: any; error?: string }> =
+              [];
             const promises: Promise<void>[] = [];
-            
+
             // Process in batches of max
             for (let i = 0; i < items.length; i += max) {
               const batch = items.slice(i, i + max);
-              const batchPromises = batch.map(async (item: any, batchIdx: number) => {
-                const globalIdx = i + batchIdx;
-                results[globalIdx] = { ok: false, error: "pending" };
-                
-                try {
-                  if (!item || typeof item.action !== "string") {
-                    throw new Error("Invalid item: missing action");
-                  }
-                  
-                  if (!safeActions.has(item.action)) {
-                    throw new Error(`Action not allowed in parallel: ${item.action}`);
-                  }
-                  
-                  const actionArgs = item.args || {};
-                  const result = await runToolAction(item.action, actionArgs);
-                  results[globalIdx] = { ok: true, value: result };
-                } catch (err: unknown) {
-                  const error = err instanceof Error ? err.message : String(err);
-                  results[globalIdx] = { ok: false, error };
-                  
-                  if (failFast) {
-                    throw err;
+              const batchPromises = batch.map(
+                async (item: any, batchIdx: number) => {
+                  const globalIdx = i + batchIdx;
+                  results[globalIdx] = { ok: false, error: "pending" };
+
+                  try {
+                    if (!item || typeof item.action !== "string") {
+                      throw new Error("Invalid item: missing action");
+                    }
+
+                    if (!safeActions.has(item.action)) {
+                      throw new Error(
+                        `Action not allowed in parallel: ${item.action}`
+                      );
+                    }
+
+                    const actionArgs = item.args || {};
+                    const result = await runToolAction(item.action, actionArgs);
+                    results[globalIdx] = { ok: true, value: result };
+                  } catch (err: unknown) {
+                    const error =
+                      err instanceof Error ? err.message : String(err);
+                    results[globalIdx] = { ok: false, error };
+
+                    if (failFast) {
+                      throw err;
+                    }
                   }
                 }
-              });
-              
+              );
+
               promises.push(...batchPromises);
-              
+
               // Wait for current batch
               if (failFast) {
                 await Promise.all(batchPromises);
               }
             }
-            
+
             if (!failFast) {
               await Promise.allSettled(promises);
             }
-            
+
             return results;
           }
 
@@ -688,13 +847,17 @@ export class VM {
             const firstArg = callArgs[0];
             const initialPrompt = String(callArgs[1] ?? "");
             const opts = (callArgs[2] ?? {}) as Record<string, unknown>;
-            
+
             let client: LLMClient;
             let noAsk: boolean | undefined;
             let mockPlan: any;
-            
+
             // Check if first argument is LLMClient or inline config
-            if (firstArg && typeof firstArg === "object" && (firstArg as any).__ps_llm_client) {
+            if (
+              firstArg &&
+              typeof firstArg === "object" &&
+              (firstArg as any).__ps_llm_client
+            ) {
               // Explicit LLMClient
               client = (firstArg as any).client as LLMClient;
               noAsk = (firstArg as any).noAsk as boolean | undefined;
@@ -707,7 +870,7 @@ export class VM {
                 typeof rawApiKey === "string" && process.env[rawApiKey]
                   ? process.env[rawApiKey]
                   : rawApiKey;
-              
+
               const { mock_plan, mockPlan: mockPlanAlt, no_ask, ...rest } = cfg;
               const clientConfig: Record<string, unknown> = { ...rest };
               if (rawApiKey !== undefined) {
@@ -717,15 +880,29 @@ export class VM {
               noAsk = typeof no_ask === "boolean" ? no_ask : undefined;
               mockPlan = mock_plan ?? mockPlanAlt;
             } else {
-              throw new Error("run_agent: first argument must be an LLMClient or config object");
+              throw new Error(
+                "run_agent: first argument must be an LLMClient or config object"
+              );
             }
 
             // No max_iterations by default (indefinite)
-            const maxIterations = typeof opts.max_iterations === "number" ? opts.max_iterations : Number.MAX_SAFE_INTEGER;
-            const requireWrite = typeof opts.require_write === "boolean" ? opts.require_write : false;
-            const stopOnReport = typeof opts.stop_on_report === "boolean" ? opts.stop_on_report : true;
-            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : undefined;
-            const contextFiles = Array.isArray(opts.context_files) ? opts.context_files : [];
+            const maxIterations =
+              typeof opts.max_iterations === "number"
+                ? opts.max_iterations
+                : Number.MAX_SAFE_INTEGER;
+            const requireWrite =
+              typeof opts.require_write === "boolean"
+                ? opts.require_write
+                : false;
+            const stopOnReport =
+              typeof opts.stop_on_report === "boolean"
+                ? opts.stop_on_report
+                : true;
+            const memoryKey =
+              typeof opts.memory_key === "string" ? opts.memory_key : undefined;
+            const contextFiles = Array.isArray(opts.context_files)
+              ? opts.context_files
+              : [];
 
             const history: { role: string; content: string }[] = [];
             let currentPrompt = initialPrompt;
@@ -735,7 +912,7 @@ export class VM {
 
             while (iteration < maxIterations) {
               iteration++;
-              
+
               const input: Record<string, unknown> = {
                 system: applyNoAsk(DEFAULT_SYSTEM_PROMPT, noAsk),
                 user: currentPrompt,
@@ -758,7 +935,7 @@ export class VM {
 
               let actionResult: Value;
               let actionError: string | null = null;
-              
+
               try {
                 actionResult = await applyPlan(plan, {
                   logReport: stopOnReport,
@@ -774,14 +951,19 @@ export class VM {
               if (loopState.loopDetected) {
                 console.log(`[ps] Loop detected: ${loopState.loopType}`);
                 console.log(`[ps] ${loopState.suggestion}`);
-                
-                if (loopState.loopType === "action_cycle" || loopState.loopType === "exact_repeat") {
+
+                if (
+                  loopState.loopType === "action_cycle" ||
+                  loopState.loopType === "exact_repeat"
+                ) {
                   currentPrompt = `LOOP DETECTED: You are repeating the same actions. ${loopState.suggestion}\n\nChange your strategy:\n- If you've been reading and writing the same file repeatedly, STOP and use REPORT with done=true.\n- If you've verified the changes are correct, complete the task with REPORT.\n- If something is wrong, try a completely different approach.`;
                   continue;
                 }
-                
+
                 if (this.config.haltOnLoop) {
-                  throw new Error(`Loop detected and haltOnLoop is enabled: ${loopState.loopType}`);
+                  throw new Error(
+                    `Loop detected and haltOnLoop is enabled: ${loopState.loopType}`
+                  );
                 }
               }
 
@@ -789,41 +971,69 @@ export class VM {
               if (history.length > 20) {
                 history.splice(0, history.length - 20); // Keep last 20 entries
               }
-              history.push({ role: "assistant", content: JSON.stringify(plan) });
+              history.push({
+                role: "assistant",
+                content: JSON.stringify(plan),
+              });
               if (actionError) {
-                history.push({ role: "user", content: `Action ERROR: ${actionError}. Try a different approach.` });
+                history.push({
+                  role: "user",
+                  content: `Action ERROR: ${actionError}. Try a different approach.`,
+                });
               } else {
-                history.push({ role: "user", content: `Action result: ${JSON.stringify(actionResult)}` });
+                history.push({
+                  role: "user",
+                  content: `Action result: ${JSON.stringify(actionResult)}`,
+                });
               }
 
               lastResult = actionResult;
 
               // Track if we've written anything
-              if (plan.action === "WRITE_FILE" || plan.action === "PATCH_FILE") {
+              if (
+                plan.action === "WRITE_FILE" ||
+                plan.action === "PATCH_FILE"
+              ) {
                 hasWritten = true;
               }
 
               // Check if REPORT with done=true (v0.3 behavior)
-              if (plan.action === "REPORT" && plan.done === true && !actionError) {
+              if (
+                plan.action === "REPORT" &&
+                plan.done === true &&
+                !actionError
+              ) {
                 if (stopOnReport) {
                   if (requireWrite && !hasWritten) {
-                    console.log(`[ps] Agent tried to complete without writing. Forcing continuation...`);
+                    console.log(
+                      `[ps] Agent tried to complete without writing. Forcing continuation...`
+                    );
                     currentPrompt = `You reported done but haven't made any changes yet. You MUST use WRITE_FILE or PATCH_FILE to modify the file before reporting done. DO NOT just read and report - actually make the changes requested.`;
                     continue;
                   }
-                  console.log(`[ps] Agent completed after ${iteration} iterations`);
+                  console.log(
+                    `[ps] Agent completed after ${iteration} iterations`
+                  );
                   break;
                 }
               }
 
               // For other cases, check done flag
-              if (plan.done === true && plan.action !== "REPORT" && !actionError) {
+              if (
+                plan.done === true &&
+                plan.action !== "REPORT" &&
+                !actionError
+              ) {
                 if (requireWrite && !hasWritten) {
-                  console.log(`[ps] Agent tried to complete without writing. Forcing continuation...`);
+                  console.log(
+                    `[ps] Agent tried to complete without writing. Forcing continuation...`
+                  );
                   currentPrompt = `You reported done but haven't made any changes yet. You MUST use WRITE_FILE or PATCH_FILE to modify the file before reporting done. DO NOT just read and report - actually make the changes requested.`;
                   continue;
                 }
-                console.log(`[ps] Agent completed after ${iteration} iterations`);
+                console.log(
+                  `[ps] Agent completed after ${iteration} iterations`
+                );
                 break;
               }
 
@@ -835,8 +1045,13 @@ export class VM {
               }
             }
 
-            if (iteration >= maxIterations && maxIterations !== Number.MAX_SAFE_INTEGER) {
-              console.warn(`[ps] Agent reached max iterations (${maxIterations})`);
+            if (
+              iteration >= maxIterations &&
+              maxIterations !== Number.MAX_SAFE_INTEGER
+            ) {
+              console.warn(
+                `[ps] Agent reached max iterations (${maxIterations})`
+              );
             }
 
             return lastResult;
@@ -846,8 +1061,11 @@ export class VM {
             const config = (callArgs[0] ?? {}) as Record<string, unknown>;
             const question = String(config.question ?? "");
             const schema = config.schema || {};
-            const memoryKey = typeof config.memory_key === "string" ? config.memory_key : undefined;
-            
+            const memoryKey =
+              typeof config.memory_key === "string"
+                ? config.memory_key
+                : undefined;
+
             const systemPrompt = `You are an AI assistant that makes structured decisions. 
             
 Return a JSON object that matches the provided schema exactly. Do not include any explanation or markdown.
@@ -858,21 +1076,25 @@ Schema: ${JSON.stringify(schema)}`;
               system: systemPrompt,
               user: question,
             };
-            
+
             if (memoryKey) {
               input.memory_key = memoryKey;
             }
 
             // Handle provider overrides
             const overrides: Record<string, unknown> = {};
-            if (typeof config.provider === "string") overrides.provider = config.provider;
-            if (typeof config.model === "string") overrides.model = config.model;
-            
+            if (typeof config.provider === "string")
+              overrides.provider = config.provider;
+            if (typeof config.model === "string")
+              overrides.model = config.model;
+
             const useOverrides = Object.keys(overrides).length > 0;
-            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
-            
+            const clientOverride = useOverrides
+              ? new LLMClient(overrides as any)
+              : undefined;
+
             const plan = await runLLMPlan(input, clientOverride);
-            
+
             // Extract the structured response from plan.args or parse plan content
             if (plan.args && typeof plan.args === "object") {
               return plan.args;
@@ -883,8 +1105,9 @@ Schema: ${JSON.stringify(schema)}`;
           if (e.name === "judge") {
             const question = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
-            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : undefined;
-            
+            const memoryKey =
+              typeof opts.memory_key === "string" ? opts.memory_key : undefined;
+
             const systemPrompt = `You are an AI assistant that makes boolean judgments.
 
 Answer with exactly one of these JSON responses:
@@ -897,21 +1120,24 @@ Do not include any explanation. Only respond with the JSON.`;
               system: systemPrompt,
               user: question,
             };
-            
+
             if (memoryKey) {
               input.memory_key = memoryKey;
             }
 
             // Handle provider overrides
             const overrides: Record<string, unknown> = {};
-            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.provider === "string")
+              overrides.provider = opts.provider;
             if (typeof opts.model === "string") overrides.model = opts.model;
-            
+
             const useOverrides = Object.keys(overrides).length > 0;
-            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
-            
+            const clientOverride = useOverrides
+              ? new LLMClient(overrides as any)
+              : undefined;
+
             const plan = await runLLMPlan(input, clientOverride);
-            
+
             // Extract boolean result
             if (plan.args && typeof plan.args === "object") {
               const result = (plan.args as any).message;
@@ -923,10 +1149,13 @@ Do not include any explanation. Only respond with the JSON.`;
           if (e.name === "summarize") {
             const instruction = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
-            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : undefined;
-            
+            const memoryKey =
+              typeof opts.memory_key === "string" ? opts.memory_key : undefined;
+
             if (!memoryKey) {
-              console.warn("[ps] summarize() called without memory_key - no effect");
+              console.warn(
+                "[ps] summarize() called without memory_key - no effect"
+              );
               return null;
             }
 
@@ -946,28 +1175,36 @@ Return a REPORT action with the summary.`;
 
             // Handle provider overrides
             const overrides: Record<string, unknown> = {};
-            if (typeof opts.provider === "string") overrides.provider = opts.provider;
+            if (typeof opts.provider === "string")
+              overrides.provider = opts.provider;
             if (typeof opts.model === "string") overrides.model = opts.model;
-            
+
             const useOverrides = Object.keys(overrides).length > 0;
-            const clientOverride = useOverrides ? new LLMClient(overrides as any) : undefined;
-            
+            const clientOverride = useOverrides
+              ? new LLMClient(overrides as any)
+              : undefined;
+
             const plan = await runLLMPlan(input, clientOverride);
-            
+
             // Apply the plan to get summary content
             const result = await applyPlan(plan, {
               logReport: true,
               returnReport: true,
             });
-            
+
             // Update memory store with the summary
-            const summaryText = typeof result === "string" ? result : JSON.stringify(result);
-            const existingMemory = this.memoryStore.get(memoryKey) || { summary: "", objective: "", context: {} };
+            const summaryText =
+              typeof result === "string" ? result : JSON.stringify(result);
+            const existingMemory = this.memoryStore.get(memoryKey) || {
+              summary: "",
+              objective: "",
+              context: {},
+            };
             this.memoryStore.set(memoryKey, {
               ...existingMemory,
               summary: summaryText,
             });
-            
+
             console.log(`[ps] Memory ${memoryKey} summarized`);
             return result;
           }
@@ -983,7 +1220,7 @@ Return a REPORT action with the summary.`;
           if (e.name === "run") {
             const workflowPath = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as SubworkflowOptions;
-            
+
             await this.subworkflowExecutor.execute(workflowPath, opts);
             return null;
           }
@@ -991,8 +1228,11 @@ Return a REPORT action with the summary.`;
           if (e.name === "call") {
             const workflowPath = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as SubworkflowOptions;
-            
-            const result = await this.subworkflowExecutor.execute(workflowPath, opts);
+
+            const result = await this.subworkflowExecutor.execute(
+              workflowPath,
+              opts
+            );
             return result;
           }
 
@@ -1000,14 +1240,20 @@ Return a REPORT action with the summary.`;
           if (e.name === "build_memory") {
             const name = String(callArgs[0] ?? "");
             const opts = (callArgs[1] ?? {}) as Record<string, unknown>;
-            
+
             await this.memoryStoreNew.init();
             await this.memoryStoreNew.buildMemory(name, {
-              globs: Array.isArray(opts.globs) ? opts.globs as string[] : [],
-              mode: typeof opts.mode === "string" ? opts.mode as "full" | "incremental" : "full",
-              config: typeof opts.config === "object" ? opts.config as any : undefined,
+              globs: Array.isArray(opts.globs) ? (opts.globs as string[]) : [],
+              mode:
+                typeof opts.mode === "string"
+                  ? (opts.mode as "full" | "incremental")
+                  : "full",
+              config:
+                typeof opts.config === "object"
+                  ? (opts.config as any)
+                  : undefined,
             });
-            
+
             console.log(`[ps] Memory '${name}' built`);
             return null;
           }
@@ -1016,30 +1262,59 @@ Return a REPORT action with the summary.`;
             const name = String(callArgs[0] ?? "");
             const query = String(callArgs[1] ?? "");
             const opts = (callArgs[2] ?? {}) as Record<string, unknown>;
-            
+
             const result = await this.memoryStoreNew.recall(name, query, {
               top_k: typeof opts.top_k === "number" ? opts.top_k : undefined,
             });
-            
+
             return result;
           }
 
           if (e.name === "forget") {
             const opts = (callArgs[0] ?? {}) as Record<string, unknown>;
-            const memoryKey = typeof opts.memory_key === "string" ? opts.memory_key : "default";
-            const mode = typeof opts.mode === "string" ? opts.mode as "compact" | "reset" | "keep_last" : "compact";
-            const keepN = typeof opts.keep_n === "number" ? opts.keep_n : undefined;
-            
-            const result = await this.memoryStoreNew.forget(memoryKey, mode, { keep_n: keepN });
-            
-            console.log(`[ps] Memory forgotten: ${result.before_tokens} -> ${result.after_tokens} tokens`);
+            const memoryKey =
+              typeof opts.memory_key === "string" ? opts.memory_key : "default";
+            const mode =
+              typeof opts.mode === "string"
+                ? (opts.mode as "compact" | "reset" | "keep_last")
+                : "compact";
+            const keepN =
+              typeof opts.keep_n === "number" ? opts.keep_n : undefined;
+
+            const result = await this.memoryStoreNew.forget(memoryKey, mode, {
+              keep_n: keepN,
+            });
+
+            console.log(
+              `[ps] Memory forgotten: ${result.before_tokens} -> ${result.after_tokens} tokens`
+            );
+            return result;
+          }
+
+          if (e.name === "archive") {
+            const opts = (callArgs[0] ?? {}) as Record<string, unknown>;
+            const memoryKey =
+              typeof opts.memory_key === "string" ? opts.memory_key : "default";
+            const toLtm =
+              typeof opts.to_ltm === "string" ? opts.to_ltm : undefined;
+            const clearStm =
+              typeof opts.clear_stm === "boolean" ? opts.clear_stm : false;
+
+            const result = await this.memoryStoreNew.archive(memoryKey, {
+              to_ltm: toLtm,
+              clear_stm: clearStm,
+            });
+
+            console.log(`[ps] Memory archived: ${result.events_count} events`);
             return result;
           }
 
           if (e.name === "set_context_format") {
             const format = String(callArgs[0] ?? "json");
             if (format !== "json" && format !== "toon") {
-              throw new Error(`Invalid context format: ${format}. Must be 'json' or 'toon'`);
+              throw new Error(
+                `Invalid context format: ${format}. Must be 'json' or 'toon'`
+              );
             }
             this.contextFormat = format as ContextFormat;
             console.log(`[ps] Context format set to: ${format}`);
@@ -1050,29 +1325,44 @@ Return a REPORT action with the summary.`;
             const obj = callArgs[0] ?? {};
             const comparison = ToonSerializer.compareFormats(obj);
             console.log(`[ps] Format comparison:`);
-            console.log(`  JSON: ${comparison.json.size} bytes, ${comparison.json.tokens} tokens`);
-            console.log(`  TOON: ${comparison.toon.size} bytes, ${comparison.toon.tokens} tokens`);
-            console.log(`  Savings: ${comparison.savings.percentage}% (${comparison.savings.tokens} tokens)`);
+            console.log(
+              `  JSON: ${comparison.json.size} bytes, ${comparison.json.tokens} tokens`
+            );
+            console.log(
+              `  TOON: ${comparison.toon.size} bytes, ${comparison.toon.tokens} tokens`
+            );
+            console.log(
+              `  Savings: ${comparison.savings.percentage}% (${comparison.savings.tokens} tokens)`
+            );
             return comparison;
           }
 
           // user funcs
           const f = this.funcs.get(e.name);
           if (!f) throw new Error(`Unknown function: ${e.name}`);
-          
+
           // Handle class constructor
           if ((f as any).__ps_class) {
             const className = (f as any).className || e.name;
-            const instance: Record<string, any> = { __ps_class_instance: true, __ps_class_name: className };
-            
+            const instance: Record<string, any> = {
+              __ps_class_instance: true,
+              __ps_class_name: className,
+            };
+
             // First, collect all method definitions from the class body
-            const methods = new Map<string, { params: string[]; body: Stmt[] }>();
+            const methods = new Map<
+              string,
+              { params: string[]; body: Stmt[] }
+            >();
             for (const stmt of f.body) {
               if (stmt.type === "Def") {
-                methods.set(stmt.name, { params: stmt.params, body: stmt.body });
+                methods.set(stmt.name, {
+                  params: stmt.params,
+                  body: stmt.body,
+                });
               }
             }
-            
+
             // Attach methods to instance with __ps_method marker
             for (const [methodName, methodDef] of methods.entries()) {
               instance[methodName] = {
@@ -1080,7 +1370,7 @@ Return a REPORT action with the summary.`;
                 func: methodDef,
               };
             }
-            
+
             // Create local environment with 'self' pointing to instance
             const local = new Map<string, Value>();
             local.set("self", instance);
@@ -1094,10 +1384,14 @@ Return a REPORT action with the summary.`;
                   await execStmt(stmt, local);
                 }
               }
-              
+
               // Call __init__ or init if it exists
               const initMethod = instance.__init__ || instance.init;
-              if (initMethod && typeof initMethod === "object" && initMethod.__ps_method) {
+              if (
+                initMethod &&
+                typeof initMethod === "object" &&
+                initMethod.__ps_method
+              ) {
                 const funcDef = initMethod.func;
                 const initEnv = new Map<string, Value>();
                 initEnv.set("self", instance); // Ensure self points to the instance
@@ -1115,14 +1409,14 @@ Return a REPORT action with the summary.`;
                   }
                 }
               }
-              
+
               return instance;
             } catch (sig) {
               if (sig instanceof ReturnSignal) return sig.value;
               throw sig;
             }
           }
-          
+
           // Regular function call
           const local = new Map<string, Value>();
           f.params.forEach((p, idx) => local.set(p, callArgs[idx] ?? null));
@@ -1166,7 +1460,9 @@ Return a REPORT action with the summary.`;
           if (obj && typeof obj === "object") {
             obj[s.property] = val;
           } else {
-            throw new Error(`Cannot set attribute '${s.property}' on non-object`);
+            throw new Error(
+              `Cannot set attribute '${s.property}' on non-object`
+            );
           }
           return;
         }
@@ -1213,9 +1509,11 @@ Return a REPORT action with the summary.`;
         case "For": {
           const iterValue = await evalExpr(s.iter, env);
           if (!Array.isArray(iterValue)) {
-            throw new Error(`For loop iterator must be an array, got ${typeof iterValue}`);
+            throw new Error(
+              `For loop iterator must be an array, got ${typeof iterValue}`
+            );
           }
-          
+
           for (const item of iterValue) {
             env.set(s.var, item);
             try {
@@ -1233,10 +1531,10 @@ Return a REPORT action with the summary.`;
           if (!policyValue || typeof policyValue !== "object") {
             throw new Error("Policy must be an object");
           }
-          
+
           // Save current policy
           const originalPolicy = { ...this.ctx.policy };
-          
+
           try {
             // Apply new policy scope
             const newPolicy = policyValue as any;
@@ -1252,7 +1550,7 @@ Return a REPORT action with the summary.`;
             if (typeof newPolicy.maxFileBytes === "number") {
               this.ctx.policy.maxFileBytes = newPolicy.maxFileBytes;
             }
-            
+
             await execBlock(s.body, env);
           } finally {
             // Restore original policy
@@ -1263,8 +1561,10 @@ Return a REPORT action with the summary.`;
         case "Retry": {
           const countValue = await evalExpr(s.count, env);
           const maxRetries = Number(countValue) || 1;
-          const backoffMs = s.backoff ? Number(await evalExpr(s.backoff, env)) || 0 : 0;
-          
+          const backoffMs = s.backoff
+            ? Number(await evalExpr(s.backoff, env)) || 0
+            : 0;
+
           let lastError: unknown = null;
           for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
@@ -1275,31 +1575,35 @@ Return a REPORT action with the summary.`;
               if (err instanceof ReturnSignal || err instanceof BreakSignal) {
                 throw err; // Don't retry control flow signals
               }
-              
+
               if (attempt < maxRetries - 1 && backoffMs > 0) {
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
+                await new Promise((resolve) => setTimeout(resolve, backoffMs));
               }
             }
           }
-          
+
           // All retries failed
           throw lastError || new Error("Retry block failed");
         }
         case "Timeout": {
           const durationValue = await evalExpr(s.duration, env);
           const timeoutMs = Number(durationValue) || 0;
-          
+
           if (timeoutMs <= 0) {
             await execBlock(s.body, env);
             return;
           }
-          
+
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error(`Timeout: operation exceeded ${timeoutMs}ms`)), timeoutMs);
+            setTimeout(
+              () =>
+                reject(new Error(`Timeout: operation exceeded ${timeoutMs}ms`)),
+              timeoutMs
+            );
           });
-          
+
           const bodyPromise = execBlock(s.body, env);
-          
+
           await Promise.race([bodyPromise, timeoutPromise]);
           return;
         }

@@ -27,7 +27,8 @@ export class ToolRegistry {
   private map = new Map<string, Tool<any>>();
 
   register<T>(t: Tool<T>) {
-    if (this.map.has(t.name)) throw new Error(`Tool already registered: ${t.name}`);
+    if (this.map.has(t.name))
+      throw new Error(`Tool already registered: ${t.name}`);
     this.map.set(t.name, t);
   }
 
@@ -56,19 +57,20 @@ export const READ_FILE: Tool<{ path: string; maxBytes?: number }> = {
     try {
       const buf = await fs.readFile(p);
       const max = args.maxBytes ?? ctx.policy.maxFileBytes;
-      if (buf.byteLength > max) throw new Error(`File too large: ${buf.byteLength} > ${max}`);
+      if (buf.byteLength > max)
+        throw new Error(`File too large: ${buf.byteLength} > ${max}`);
       return buf.toString("utf8");
     } catch (err: any) {
       if (err.code === "ENOENT") {
         throw new Error(
           `File not found: ${args.path}\n` +
-          `Suggestion: Use SEARCH to verify the file exists, or use WRITE_FILE to create it.`
+            `Suggestion: Use SEARCH to verify the file exists, or use WRITE_FILE to create it.`
         );
       }
       if (err.code === "EISDIR") {
         throw new Error(
           `Path is a directory, not a file: ${args.path}\n` +
-          `Suggestion: Use SEARCH to list files in this directory.`
+            `Suggestion: Use SEARCH to list files in this directory.`
         );
       }
       if (err.code === "EACCES") {
@@ -79,7 +81,11 @@ export const READ_FILE: Tool<{ path: string; maxBytes?: number }> = {
   },
 };
 
-export const WRITE_FILE: Tool<{ path: string; content: string; mode?: "overwrite" | "create_only" }> = {
+export const WRITE_FILE: Tool<{
+  path: string;
+  content: string;
+  mode?: "overwrite" | "create_only";
+}> = {
   name: "WRITE_FILE",
   description: "Write a file in workspace.",
   schema: z.object({
@@ -89,20 +95,20 @@ export const WRITE_FILE: Tool<{ path: string; content: string; mode?: "overwrite
   }),
   async run(ctx, args) {
     const p = safeResolve(ctx.projectRoot, args.path);
-    
+
     try {
       if (args.mode === "create_only") {
         try {
           await fs.access(p);
           throw new Error(
             `File already exists: ${args.path}\n` +
-            `Suggestion: Use mode "overwrite" to replace it, or use READ_FILE to check its contents first.`
+              `Suggestion: Use mode "overwrite" to replace it, or use READ_FILE to check its contents first.`
           );
         } catch (err: any) {
           if (err.code !== "ENOENT") throw err;
         }
       }
-      
+
       await fs.mkdir(path.dirname(p), { recursive: true });
       await fs.writeFile(p, args.content, "utf8");
       return `WROTE ${args.path} (${args.content.length} chars)`;
@@ -110,7 +116,7 @@ export const WRITE_FILE: Tool<{ path: string; content: string; mode?: "overwrite
       if (err.code === "EISDIR") {
         throw new Error(
           `Cannot write: path is a directory: ${args.path}\n` +
-          `Suggestion: Specify a file path, not a directory.`
+            `Suggestion: Specify a file path, not a directory.`
         );
       }
       if (err.code === "EACCES") {
@@ -138,12 +144,14 @@ export const PATCH_FILE: Tool<{ path: string; patch: string }> = {
         await fs.writeFile(p, content, "utf8");
         return `PATCHED ${args.path} (replaced)`;
       }
-      throw new Error("PATCH_FILE: unsupported patch format. Use 'REPLACE:\\n<content>' in v0.");
+      throw new Error(
+        "PATCH_FILE: unsupported patch format. Use 'REPLACE:\\n<content>' in v0."
+      );
     } catch (err: any) {
       if (err.code === "ENOENT") {
         throw new Error(
           `Cannot patch: file not found: ${args.path}\n` +
-          `Suggestion: Use WRITE_FILE to create the file first, or verify the path with SEARCH.`
+            `Suggestion: Use WRITE_FILE to create the file first, or verify the path with SEARCH.`
         );
       }
       if (err.code === "EISDIR") {
@@ -157,7 +165,11 @@ export const PATCH_FILE: Tool<{ path: string; patch: string }> = {
   },
 };
 
-export const RUN_CMD: Tool<{ cmd: string; args?: string[]; timeoutMs?: number }> = {
+export const RUN_CMD: Tool<{
+  cmd: string;
+  args?: string[];
+  timeoutMs?: number;
+}> = {
   name: "RUN_CMD",
   description: "Run an allowlisted command inside workspace.",
   schema: z.object({
@@ -170,8 +182,8 @@ export const RUN_CMD: Tool<{ cmd: string; args?: string[]; timeoutMs?: number }>
       const allowed = ctx.policy.allowCommands.join(", ");
       throw new Error(
         `Command not allowed: ${args.cmd}\n` +
-        `Allowed commands: ${allowed || "none"}\n` +
-        `Suggestion: Check the policy configuration or use an allowed command.`
+          `Allowed commands: ${allowed || "none"}\n` +
+          `Suggestion: Check the policy configuration or use an allowed command.`
       );
     }
 
@@ -198,7 +210,7 @@ export const RUN_CMD: Tool<{ cmd: string; args?: string[]; timeoutMs?: number }>
       if (err.code === "ENOENT") {
         throw new Error(
           `Command not found: ${args.cmd}\n` +
-          `Suggestion: Verify the command is installed and available in PATH.`
+            `Suggestion: Verify the command is installed and available in PATH.`
         );
       }
       if (err.code === "EACCES") {
@@ -209,9 +221,36 @@ export const RUN_CMD: Tool<{ cmd: string; args?: string[]; timeoutMs?: number }>
   },
 };
 
-export const SEARCH: Tool<{ query?: string; globs?: string[]; maxResults?: number }> = {
+export const RECALL: Tool<{
+  memory_name: string;
+  query: string;
+  top_k?: number;
+}> = {
+  name: "RECALL",
+  description: "Recall relevant information from long-term memory.",
+  schema: z.object({
+    memory_name: z.string().min(1),
+    query: z.string().min(1),
+    top_k: z.number().int().positive().max(20).optional(),
+  }),
+  async run(ctx, args) {
+    return {
+      memory_name: args.memory_name,
+      query: args.query,
+      top_k: args.top_k ?? 5,
+      _note: "RECALL tool invoked - VM will handle memory retrieval",
+    };
+  },
+};
+
+export const SEARCH: Tool<{
+  query?: string;
+  globs?: string[];
+  maxResults?: number;
+}> = {
   name: "SEARCH",
-  description: "Search for a substring in workspace files, or list files matching globs if query is empty.",
+  description:
+    "Search for a substring in workspace files, or list files matching globs if query is empty.",
   schema: z.object({
     query: z.string().optional().default(""),
     globs: z.array(z.string()).optional(),
@@ -266,7 +305,11 @@ export const SEARCH: Tool<{ query?: string; globs?: string[]; maxResults?: numbe
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i];
               if (line && line.includes(query)) {
-                results.push({ path: rel, line: i + 1, text: line.slice(0, 300) });
+                results.push({
+                  path: rel,
+                  line: i + 1,
+                  text: line.slice(0, 300),
+                });
                 if (results.length >= maxResults) return;
               }
             }
@@ -286,21 +329,22 @@ export const SEARCH: Tool<{ query?: string; globs?: string[]; maxResults?: numbe
 
     try {
       await walk(ctx.projectRoot);
-      
+
       if (results.length === 0 && globs.length > 0) {
         return {
           results: [],
-          message: `No files found matching globs: ${globs.join(", ")}\n` +
-            `Suggestion: Verify the glob patterns or try a broader search.`
+          message:
+            `No files found matching globs: ${globs.join(", ")}\n` +
+            `Suggestion: Verify the glob patterns or try a broader search.`,
         };
       }
-      
+
       return results;
     } catch (err: any) {
       if (err.code === "ENOENT") {
         throw new Error(
           `Project root not found: ${ctx.projectRoot}\n` +
-          `Suggestion: Verify the project path configuration.`
+            `Suggestion: Verify the project path configuration.`
         );
       }
       throw err;
@@ -314,6 +358,7 @@ export function createDefaultRegistry() {
   r.register(WRITE_FILE);
   r.register(PATCH_FILE);
   r.register(SEARCH);
+  r.register(RECALL);
   r.register(RUN_CMD);
   return r;
 }

@@ -65,7 +65,7 @@ export class MemoryStore {
       globs: string[];
       mode?: "full" | "incremental";
       config?: MemoryConfig;
-    },
+    }
   ): Promise<void> {
     const config = options.config || this.configs.get(name) || {};
     this.configs.set(name, config);
@@ -78,7 +78,9 @@ export class MemoryStore {
       index: {},
     };
 
-    console.log(`[memory] Building long-term memory '${name}' with globs: ${options.globs.join(", ")}`);
+    console.log(
+      `[memory] Building long-term memory '${name}' with globs: ${options.globs.join(", ")}`
+    );
 
     const memoryDir = path.join(this.storageDir, name);
     await fs.mkdir(memoryDir, { recursive: true });
@@ -88,7 +90,7 @@ export class MemoryStore {
     await fs.writeFile(
       path.join(memoryDir, "ltm.json"),
       JSON.stringify(ltm, null, 2),
-      "utf8",
+      "utf8"
     );
 
     console.log(`[memory] Memory '${name}' built and saved`);
@@ -97,7 +99,7 @@ export class MemoryStore {
   async recall(
     name: string,
     query: string,
-    options: { top_k?: number } = {},
+    options: { top_k?: number } = {}
   ): Promise<RecallResult> {
     const ltm = this.longMemories.get(name);
     if (!ltm) {
@@ -119,8 +121,10 @@ export class MemoryStore {
     }
 
     for (const [term, definition] of Object.entries(ltm.glossary)) {
-      if (term.toLowerCase().includes(query.toLowerCase()) || 
-          definition.toLowerCase().includes(query.toLowerCase())) {
+      if (
+        term.toLowerCase().includes(query.toLowerCase()) ||
+        definition.toLowerCase().includes(query.toLowerCase())
+      ) {
         chunks.push({
           source: `glossary:${term}`,
           content: definition,
@@ -145,10 +149,7 @@ export class MemoryStore {
     this.shortMemories.set(key, memory);
   }
 
-  updateShortMemory(
-    key: string,
-    updates: Partial<ShortTermMemory>,
-  ): void {
+  updateShortMemory(key: string, updates: Partial<ShortTermMemory>): void {
     const existing = this.shortMemories.get(key) || {
       summary: "",
       recent_events: [],
@@ -168,7 +169,7 @@ export class MemoryStore {
   async forget(
     memoryKey: string,
     mode: "compact" | "reset" | "keep_last",
-    options: { keep_n?: number } = {},
+    options: { keep_n?: number } = {}
   ): Promise<{ before_tokens: number; after_tokens: number }> {
     const stm = this.shortMemories.get(memoryKey);
     if (!stm) {
@@ -187,7 +188,7 @@ export class MemoryStore {
         };
 
         const compactedSummary = `Checkpoint: ${Object.keys(checkpoint.milestones).length} milestones completed. Next: ${checkpoint.next}`;
-        
+
         stm.summary = compactedSummary;
         stm.recent_events = stm.recent_events.slice(-3);
         break;
@@ -213,7 +214,7 @@ export class MemoryStore {
     const afterTokens = this.estimateTokens(JSON.stringify(stm));
 
     console.log(
-      `[memory] Forgot memory '${memoryKey}' (${mode}): ${beforeTokens} -> ${afterTokens} tokens (${Math.round((1 - afterTokens / beforeTokens) * 100)}% reduction)`,
+      `[memory] Forgot memory '${memoryKey}' (${mode}): ${beforeTokens} -> ${afterTokens} tokens (${Math.round((1 - afterTokens / beforeTokens) * 100)}% reduction)`
     );
 
     return { before_tokens: beforeTokens, after_tokens: afterTokens };
@@ -226,7 +227,7 @@ export class MemoryStore {
   async compactMemory(
     memoryKey: string,
     checkpointKey: string,
-    client?: LLMClient,
+    client?: LLMClient
   ): Promise<void> {
     const stm = this.shortMemories.get(memoryKey);
     if (!stm) return;
@@ -244,6 +245,58 @@ export class MemoryStore {
 
     this.checkpoints.set(checkpointKey, newCheckpoint);
 
-    console.log(`[memory] Compacted memory '${memoryKey}' into checkpoint '${checkpointKey}'`);
+    console.log(
+      `[memory] Compacted memory '${memoryKey}' into checkpoint '${checkpointKey}'`
+    );
+  }
+
+  async archive(
+    memoryKey: string,
+    options: {
+      to_ltm?: string;
+      clear_stm?: boolean;
+    } = {}
+  ): Promise<{ archived: boolean; events_count: number }> {
+    const stm = this.shortMemories.get(memoryKey);
+    if (!stm) {
+      console.warn(`[memory] No short-term memory found for '${memoryKey}'`);
+      return { archived: false, events_count: 0 };
+    }
+
+    const eventsCount = stm.recent_events.length;
+
+    if (options.to_ltm) {
+      const ltm = this.longMemories.get(options.to_ltm);
+      if (ltm) {
+        const archiveKey = `archived_${memoryKey}_${Date.now()}`;
+        ltm.facts[archiveKey] = {
+          summary: stm.summary,
+          objective: stm.objective,
+          events_count: eventsCount,
+          archived_at: new Date().toISOString(),
+        };
+
+        this.longMemories.set(options.to_ltm, ltm);
+
+        const memoryDir = path.join(this.storageDir, options.to_ltm);
+        await fs.mkdir(memoryDir, { recursive: true });
+        await fs.writeFile(
+          path.join(memoryDir, "ltm.json"),
+          JSON.stringify(ltm, null, 2),
+          "utf8"
+        );
+
+        console.log(
+          `[memory] Archived STM '${memoryKey}' to LTM '${options.to_ltm}'`
+        );
+      }
+    }
+
+    if (options.clear_stm) {
+      this.shortMemories.delete(memoryKey);
+      console.log(`[memory] Cleared STM '${memoryKey}'`);
+    }
+
+    return { archived: true, events_count: eventsCount };
   }
 }

@@ -49,6 +49,7 @@ log("Build exitoso: " + resultado.ok)
 ### Logs y Replay
 
 Cada sub-workflow genera:
+
 - `childRunId` único
 - Logs en `.ps-runs/<childRunId>/events.jsonl`
 - Eventos `subworkflow_start` y `subworkflow_end` en el padre
@@ -71,6 +72,7 @@ build_memory("repo", {
 ```
 
 Estructura:
+
 - `facts`: Decisiones y convenciones
 - `file_summaries`: Resúmenes por archivo
 - `capabilities`: Qué hace el repo
@@ -229,12 +231,12 @@ build_memory("codebase", { globs: ["src/**"] })
 
 for tarea in tareas:
   contexto = recall("codebase", tarea.query, { top_k: 4 })
-  
+
   run_agent(client, tarea.prompt, {
     memory_key: "session",
     long_memory: "codebase"
   })
-  
+
   if steps % 5 == 0:
     forget({ memory_key: "session", mode: "compact" })
 ```
@@ -273,9 +275,139 @@ log("Ahorro estimado: $" + (comparacion.savings.tokens * 0.000015))
 
 ---
 
+## 5. RECALL Tool
+
+Tool disponible para que agentes invoquen RECALL explícitamente durante ejecución.
+
+### Uso desde el agente
+
+El agente puede usar el tool RECALL durante `run_agent`:
+
+```json
+{
+  "action": "RECALL",
+  "args": {
+    "memory_name": "codebase",
+    "query": "authentication system",
+    "top_k": 5
+  }
+}
+```
+
+### Uso desde PromptScript
+
+```promptscript
+resultado = apply("RECALL", {
+  memory_name: "repo",
+  query: "memory system",
+  top_k: 3
+})
+
+for i in range(len(resultado.chunks)):
+  chunk = resultado.chunks[i]
+  log(chunk.source + ": " + chunk.content)
+```
+
+### Configuración
+
+RECALL está disponible por defecto en `allowTools`.
+
+---
+
+## 6. Archive Memory
+
+Archivar memoria STM a LTM y opcionalmente limpiar STM.
+
+### `archive(opts)`
+
+```promptscript
+resultado = archive({
+  memory_key: "agent_session",
+  to_ltm: "codebase",
+  clear_stm: true
+})
+
+log("Archivado: " + resultado.archived)
+log("Eventos: " + resultado.events_count)
+```
+
+### Opciones
+
+- `memory_key`: Clave de la memoria STM a archivar
+- `to_ltm`: Nombre de la memoria LTM destino (opcional)
+- `clear_stm`: Limpiar STM después de archivar (default: false)
+
+### Retorno
+
+```json
+{
+  "archived": true,
+  "events_count": 42
+}
+```
+
+---
+
+## 7. Sistema de Approvals
+
+Sistema de aprobación para acciones críticas con pausa de ejecución.
+
+### Configuración CLI
+
+```bash
+psc run workflow.ps --require-approval
+```
+
+### Acciones que requieren aprobación
+
+- `WRITE_FILE`
+- `PATCH_FILE`
+- `RUN_CMD`
+
+### Flujo
+
+1. Runtime detecta acción crítica
+2. Pausa ejecución
+3. Solicita aprobación al usuario (y/n)
+4. Registra decisión en logs
+5. Continúa o rechaza según respuesta
+
+### Configuración programática
+
+```typescript
+const vm = new VM(registry, ctx, logger, {
+  approvalCallback: async (action, args) => {
+    console.log(`Aprobar ${action}?`);
+    return await getUserApproval();
+  },
+});
+```
+
+### Logs
+
+Los eventos de aprobación se registran:
+
+```json
+{
+  "type": "approval_request",
+  "action": "WRITE_FILE",
+  "args": { "path": "src/index.ts" }
+}
+```
+
+```json
+{
+  "type": "approval_response",
+  "action": "WRITE_FILE",
+  "approved": true
+}
+```
+
+---
+
 ## Roadmap
 
-- [ ] Tool `RECALL` para que el agente pida contexto explícito
+- [x] Tool `RECALL` para que el agente pida contexto explícito
 - [ ] Auto-recall en `run_agent` con `recall_policy: { auto: true }`
 - [ ] Embeddings opcionales para LTM
 - [ ] Soporte para `.toon` como formato de PlanSpec
@@ -288,4 +420,4 @@ log("Ahorro estimado: $" + (comparacion.savings.tokens * 0.000015))
 
 - [TOON Format](https://github.com/toon-format/toon)
 - [RFC-0004: PromptScript v0.3](./RFC-0004:%20PromptScript%20v0.3%20—%20Control%20Flow%20+%20Neural%20Statements%20+%20Deterministic%20Runtime.md)
-- [PromptScript Runtime Spec](./PromptScript%20Runtime%20&%20Builtins%20Spec%20(v0.2).md)
+- [PromptScript Runtime Spec](<./PromptScript%20Runtime%20&%20Builtins%20Spec%20(v0.2).md>)

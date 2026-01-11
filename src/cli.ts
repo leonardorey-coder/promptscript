@@ -47,6 +47,7 @@ Options:
   --max-llm-calls <n>   Maximum LLM calls (default: 500)
   --max-cost <usd>      Maximum estimated cost in USD (default: 10.0)
   --halt-on-loop        Stop execution when loop is detected
+  --require-approval    Require manual approval for write operations
   --verbose             Enable verbose output
   --from-md             Treat input as Markdown plan (auto-compile)
   --out <file>          Output file path
@@ -143,18 +144,28 @@ async function main(): Promise<void> {
 
   if (fromMd) {
     const mdContent = await fs.readFile(file, "utf8");
-    const planSpec = markdownToPlanSpec(mdContent, { title: path.basename(file, ".md") });
-    
+    const planSpec = markdownToPlanSpec(mdContent, {
+      title: path.basename(file, ".md"),
+    });
+
     const runDir = path.join(projectRoot, ".ps-runs", `${Date.now()}-md`);
     await fs.mkdir(runDir, { recursive: true });
     await fs.mkdir(path.join(runDir, "input"), { recursive: true });
-    
-    await fs.writeFile(path.join(runDir, "input", "plan.md"), mdContent, "utf8");
-    await fs.writeFile(path.join(runDir, "input", "planspec.json"), JSON.stringify(planSpec, null, 2), "utf8");
-    
+
+    await fs.writeFile(
+      path.join(runDir, "input", "plan.md"),
+      mdContent,
+      "utf8"
+    );
+    await fs.writeFile(
+      path.join(runDir, "input", "planspec.json"),
+      JSON.stringify(planSpec, null, 2),
+      "utf8"
+    );
+
     src = planSpecToPromptScript(planSpec);
     await fs.writeFile(path.join(runDir, "input", "workflow.ps"), src, "utf8");
-    
+
     if (verbose) {
       console.log(`[ps] Compiled MD → PlanSpec → PS`);
       console.log(`[ps] Artifacts: ${runDir}/input/`);
@@ -177,7 +188,7 @@ async function main(): Promise<void> {
       maxLLMCalls,
       maxCostUsd,
     },
-    model ?? undefined,
+    model ?? undefined
   );
   await logger.init();
 
@@ -187,19 +198,27 @@ async function main(): Promise<void> {
     console.log("");
   }
 
-  // Setup context
+  const requireApproval = hasFlag("--require-approval");
+
   const ctx = {
     projectRoot,
     cwd: projectRoot,
     policy: {
-      allowTools: ["READ_FILE", "SEARCH", "WRITE_FILE", "EDIT_FILE", "PATCH_FILE", "RUN_CMD"],
+      allowTools: [
+        "READ_FILE",
+        "SEARCH",
+        "WRITE_FILE",
+        "EDIT_FILE",
+        "PATCH_FILE",
+        "RUN_CMD",
+        "RECALL",
+      ],
       allowCommands: ["bun", "node", "git", "rg", "ls", "cat", "grep"],
-      requireApproval: false,
+      requireApproval,
       maxFileBytes: 200_000,
     },
   };
 
-  // Create and run VM
   const vm = new VM(registry, ctx, logger, {
     maxSteps,
     maxTimeMs,
@@ -208,9 +227,25 @@ async function main(): Promise<void> {
     haltOnLoop,
     loopWarningCallback: verbose
       ? (state) => {
-        console.warn(`[ps] Loop warning: ${state.loopType}`);
-        console.warn(`[ps] ${state.suggestion}`);
-      }
+          console.warn(`[ps] Loop warning: ${state.loopType}`);
+          console.warn(`[ps] ${state.suggestion}`);
+        }
+      : undefined,
+    approvalCallback: requireApproval
+      ? async (action, args) => {
+          console.log(`\n[APPROVAL REQUIRED]`);
+          console.log(`Action: ${action}`);
+          console.log(`Args: ${JSON.stringify(args, null, 2)}`);
+          console.log(`\nApprove? (y/n): `);
+
+          const response = await new Promise<string>((resolve) => {
+            process.stdin.once("data", (data) => {
+              resolve(data.toString().trim().toLowerCase());
+            });
+          });
+
+          return response === "y" || response === "yes";
+        }
       : undefined,
   });
 
@@ -244,13 +279,15 @@ async function handleCompileMd(): Promise<void> {
 
   try {
     const markdown = await fs.readFile(inputFile, "utf8");
-    const planSpec = markdownToPlanSpec(markdown, { title: path.basename(inputFile, ".md") });
-    
+    const planSpec = markdownToPlanSpec(markdown, {
+      title: path.basename(inputFile, ".md"),
+    });
+
     const validated = PlanSpecSchema.parse(planSpec);
-    
+
     await fs.mkdir(path.dirname(outputFile), { recursive: true });
     await fs.writeFile(outputFile, JSON.stringify(validated, null, 2), "utf8");
-    
+
     console.log(`[ps] Compiled: ${inputFile} → ${outputFile}`);
     console.log(`[ps] Goal: ${validated.goal}`);
     console.log(`[ps] Steps: ${validated.steps.length}`);
@@ -280,12 +317,12 @@ async function handleCompilePlanspec(): Promise<void> {
   try {
     const json = await fs.readFile(inputFile, "utf8");
     const planSpec = PlanSpecSchema.parse(JSON.parse(json));
-    
+
     const promptScript = planSpecToPromptScript(planSpec);
-    
+
     await fs.mkdir(path.dirname(outputFile), { recursive: true });
     await fs.writeFile(outputFile, promptScript, "utf8");
-    
+
     console.log(`[ps] Compiled: ${inputFile} → ${outputFile}`);
     console.log(`[ps] Goal: ${planSpec.goal}`);
     console.log(`[ps] Steps: ${planSpec.steps.length}`);
@@ -312,7 +349,7 @@ async function handleReplay(): Promise<void> {
   try {
     const eventsFile = path.join(runDir, "events.jsonl");
     const summaryFile = path.join(runDir, "summary.json");
-    
+
     const eventsContent = await fs.readFile(eventsFile, "utf8");
     const events = eventsContent
       .split("\n")
@@ -340,7 +377,9 @@ async function handleReplay(): Promise<void> {
       } else if (event.type === "llm") {
         console.log(`[${event.step}] LLM Call`);
         if (event.usage) {
-          console.log(`  Tokens: ${event.usage.totalTokens} (${event.latencyMs}ms)`);
+          console.log(
+            `  Tokens: ${event.usage.totalTokens} (${event.latencyMs}ms)`
+          );
         }
       } else if (event.type === "loop_warning") {
         console.log(`[${event.step}] LOOP WARNING: ${event.loopType}`);

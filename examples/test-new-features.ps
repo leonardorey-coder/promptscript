@@ -1,0 +1,79 @@
+log("=== Test de Nuevas Features v0.4 ===")
+log("")
+
+log("--- Feature 1: Tool RECALL ---")
+log("El agente puede invocar RECALL como tool para obtener contexto")
+log("")
+
+log("1. Construir memoria LTM")
+build_memory("test_recall", {
+  globs: ["src/**/*.ts", "examples/**/*.ps", "README.md"]
+})
+log("  OK: Memoria LTM construida")
+
+log("2. Usar recall() como builtin")
+ctx = recall("test_recall", "memory system", { top_k: 3 })
+log("  OK: recall() retorno " + len(ctx.chunks) + " chunks")
+
+log("3. El agente puede usar RECALL tool durante run_agent")
+log("  (El tool RECALL esta disponible en la policy)")
+log("")
+
+log("--- Feature 2: Archive Memory ---")
+log("Archivar memoria STM a LTM y limpiar")
+log("")
+
+log("1. Crear memoria STM simulada")
+resultado_forget = forget({
+  memory_key: "session_test",
+  mode: "compact"
+})
+log("  STM creada/compactada")
+
+log("2. Archivar STM a LTM")
+resultado_archive = archive({
+  memory_key: "session_test",
+  to_ltm: "test_recall",
+  clear_stm: true
+})
+log("  OK: Archivado " + resultado_archive.events_count + " eventos")
+log("  STM limpiada: " + resultado_archive.archived)
+log("")
+
+log("--- Feature 3: Approvals ---")
+log("Sistema de aprobacion para acciones criticas")
+log("")
+
+log("Para usar approvals:")
+log("  1. Ejecutar con flag: --require-approval")
+log("  2. El runtime pausara antes de WRITE_FILE, PATCH_FILE, RUN_CMD")
+log("  3. El usuario debe aprobar (y/n) cada accion")
+log("")
+
+log("Ejemplo de uso:")
+log("  psc run examples/test-new-features.ps --require-approval")
+log("")
+
+log("Politica actual:")
+log("  requireApproval: " + "false (usar --require-approval para activar)")
+log("")
+
+log("=== Resumen de Features ===")
+log("")
+log("1. RECALL tool:")
+log("   - Disponible como tool para agentes")
+log("   - Permite al agente pedir contexto explicitamente")
+log("   - Uso: apply('RECALL', { memory_name: 'repo', query: 'auth' })")
+log("")
+log("2. archive():")
+log("   - Archivar STM a LTM")
+log("   - Limpiar STM despues de archivar")
+log("   - Uso: archive({ memory_key: 'session', to_ltm: 'repo', clear_stm: true })")
+log("")
+log("3. Approvals:")
+log("   - Pausar ejecucion para aprobar acciones")
+log("   - Configurar con --require-approval")
+log("   - Callback personalizable en VM config")
+log("")
+
+log("=== Test Completado ===")

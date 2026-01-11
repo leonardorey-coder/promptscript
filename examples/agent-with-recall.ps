@@ -1,0 +1,54 @@
+log("=== Agente con RECALL Tool ===")
+log("")
+
+log("Paso 1: Construir memoria del proyecto")
+build_memory("codebase", {
+  globs: ["src/**/*.ts", "examples/**/*.ps", "docs/**/*.md"]
+})
+log("  Memoria LTM construida")
+log("")
+
+log("Paso 2: Configurar cliente LLM")
+cliente = LLMClient({
+  provider: "openrouter",
+  model: "mistralai/devstral-2512:free",
+  no_ask: true
+})
+log("  Cliente configurado")
+log("")
+
+log("Paso 3: Ejecutar agente con acceso a RECALL")
+log("  El agente puede usar RECALL para obtener contexto relevante")
+log("")
+
+log("Nota: El tool RECALL esta disponible en allowTools por defecto")
+log("El agente puede invocar:")
+log("  RECALL { memory_name: 'codebase', query: 'memory system', top_k: 5 }")
+log("")
+
+log("Ejemplo de workflow:")
+log("  1. Agente recibe tarea")
+log("  2. Agente usa RECALL para obtener contexto")
+log("  3. Agente procesa con contexto relevante")
+log("  4. Agente completa tarea")
+log("")
+
+log("=== Workflow Completo con Memoria ===")
+log("")
+
+log("1. Build memory (LTM)")
+log("2. Agent usa RECALL tool para obtener contexto")
+log("3. Agent procesa con contexto")
+log("4. Archive STM a LTM al finalizar")
+log("")
+
+log("Ejemplo de archive al finalizar:")
+resultado = archive({
+  memory_key: "agent_session",
+  to_ltm: "codebase",
+  clear_stm: true
+})
+log("  Archivado: " + resultado.archived)
+log("")
+
+log("=== Completado ===")
