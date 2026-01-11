@@ -53,10 +53,29 @@ export const READ_FILE: Tool<{ path: string; maxBytes?: number }> = {
   }),
   async run(ctx, args) {
     const p = safeResolve(ctx.projectRoot, args.path);
-    const buf = await fs.readFile(p);
-    const max = args.maxBytes ?? ctx.policy.maxFileBytes;
-    if (buf.byteLength > max) throw new Error(`File too large: ${buf.byteLength} > ${max}`);
-    return buf.toString("utf8");
+    try {
+      const buf = await fs.readFile(p);
+      const max = args.maxBytes ?? ctx.policy.maxFileBytes;
+      if (buf.byteLength > max) throw new Error(`File too large: ${buf.byteLength} > ${max}`);
+      return buf.toString("utf8");
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        throw new Error(
+          `File not found: ${args.path}\n` +
+          `Suggestion: Use SEARCH to verify the file exists, or use WRITE_FILE to create it.`
+        );
+      }
+      if (err.code === "EISDIR") {
+        throw new Error(
+          `Path is a directory, not a file: ${args.path}\n` +
+          `Suggestion: Use SEARCH to list files in this directory.`
+        );
+      }
+      if (err.code === "EACCES") {
+        throw new Error(`Permission denied: ${args.path}`);
+      }
+      throw err;
+    }
   },
 };
 
@@ -70,15 +89,38 @@ export const WRITE_FILE: Tool<{ path: string; content: string; mode?: "overwrite
   }),
   async run(ctx, args) {
     const p = safeResolve(ctx.projectRoot, args.path);
-    if (args.mode === "create_only") {
-      try {
-        await fs.access(p);
-        throw new Error(`File exists: ${args.path}`);
-      } catch {}
+    
+    try {
+      if (args.mode === "create_only") {
+        try {
+          await fs.access(p);
+          throw new Error(
+            `File already exists: ${args.path}\n` +
+            `Suggestion: Use mode "overwrite" to replace it, or use READ_FILE to check its contents first.`
+          );
+        } catch (err: any) {
+          if (err.code !== "ENOENT") throw err;
+        }
+      }
+      
+      await fs.mkdir(path.dirname(p), { recursive: true });
+      await fs.writeFile(p, args.content, "utf8");
+      return `WROTE ${args.path} (${args.content.length} chars)`;
+    } catch (err: any) {
+      if (err.code === "EISDIR") {
+        throw new Error(
+          `Cannot write: path is a directory: ${args.path}\n` +
+          `Suggestion: Specify a file path, not a directory.`
+        );
+      }
+      if (err.code === "EACCES") {
+        throw new Error(`Cannot write: permission denied: ${args.path}`);
+      }
+      if (err.code === "ENOSPC") {
+        throw new Error(`Cannot write: no space left on device: ${args.path}`);
+      }
+      throw err;
     }
-    await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, args.content, "utf8");
-    return `WROTE ${args.path} (${args.content.length} chars)`;
   },
 };
 
@@ -89,16 +131,29 @@ export const PATCH_FILE: Tool<{ path: string; patch: string }> = {
   schema: z.object({ path: z.string().min(1), patch: z.string().min(1) }),
   async run(ctx, args) {
     const p = safeResolve(ctx.projectRoot, args.path);
-    const before = await fs.readFile(p, "utf8");
-    // Simple strategy: require patch to contain a full replacement block marker
-    // v0 implementation: if patch starts with 'REPLACE:' then replace file.
-    if (args.patch.startsWith("REPLACE:\n")) {
-      const content = args.patch.slice("REPLACE:\n".length);
-      await fs.writeFile(p, content, "utf8");
-      return `PATCHED ${args.path} (replaced)`;
+    try {
+      const before = await fs.readFile(p, "utf8");
+      if (args.patch.startsWith("REPLACE:\n")) {
+        const content = args.patch.slice("REPLACE:\n".length);
+        await fs.writeFile(p, content, "utf8");
+        return `PATCHED ${args.path} (replaced)`;
+      }
+      throw new Error("PATCH_FILE: unsupported patch format. Use 'REPLACE:\\n<content>' in v0.");
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        throw new Error(
+          `Cannot patch: file not found: ${args.path}\n` +
+          `Suggestion: Use WRITE_FILE to create the file first, or verify the path with SEARCH.`
+        );
+      }
+      if (err.code === "EISDIR") {
+        throw new Error(`Cannot patch: path is a directory: ${args.path}`);
+      }
+      if (err.code === "EACCES") {
+        throw new Error(`Cannot patch: permission denied: ${args.path}`);
+      }
+      throw err;
     }
-    // fallback: refuse (so you don't silently corrupt)
-    throw new Error("PATCH_FILE: unsupported patch format. Use 'REPLACE:\\n<content>' in v0.");
   },
 };
 
@@ -112,27 +167,45 @@ export const RUN_CMD: Tool<{ cmd: string; args?: string[]; timeoutMs?: number }>
   }),
   async run(ctx, args) {
     if (!ctx.policy.allowCommands.includes(args.cmd)) {
-      throw new Error(`Command not allowed: ${args.cmd}`);
+      const allowed = ctx.policy.allowCommands.join(", ");
+      throw new Error(
+        `Command not allowed: ${args.cmd}\n` +
+        `Allowed commands: ${allowed || "none"}\n` +
+        `Suggestion: Check the policy configuration or use an allowed command.`
+      );
     }
 
-    const proc = Bun.spawn([args.cmd, ...(args.args ?? [])], {
-      cwd: ctx.cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: process.env,
-    });
+    try {
+      const proc = Bun.spawn([args.cmd, ...(args.args ?? [])], {
+        cwd: ctx.cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: process.env,
+      });
 
-    const timeoutMs = args.timeoutMs ?? 60_000;
-    const timer = setTimeout(() => proc.kill(), timeoutMs);
+      const timeoutMs = args.timeoutMs ?? 60_000;
+      const timer = setTimeout(() => proc.kill(), timeoutMs);
 
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    clearTimeout(timer);
+      const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      clearTimeout(timer);
 
-    const code = await proc.exited;
-    return `exit=${code}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
+      const code = await proc.exited;
+      return `exit=${code}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        throw new Error(
+          `Command not found: ${args.cmd}\n` +
+          `Suggestion: Verify the command is installed and available in PATH.`
+        );
+      }
+      if (err.code === "EACCES") {
+        throw new Error(`Permission denied to execute: ${args.cmd}`);
+      }
+      throw err;
+    }
   },
 };
 
@@ -166,46 +239,72 @@ export const SEARCH: Tool<{ query?: string; globs?: string[]; maxResults?: numbe
     }
 
     async function walk(dir: string) {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const e of entries) {
-        const rel = path.relative(ctx.projectRoot, path.join(dir, e.name));
-        if (isSensitivePath(rel)) continue;
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        for (const e of entries) {
+          const rel = path.relative(ctx.projectRoot, path.join(dir, e.name));
+          if (isSensitivePath(rel)) continue;
 
-        const full = path.join(dir, e.name);
-        if (e.isDirectory()) {
-          await walk(full);
-        } else if (e.isFile()) {
-          // Check glob filter first
-          if (!matchesAnyGlob(rel)) continue;
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) {
+            await walk(full);
+          } else if (e.isFile()) {
+            if (!matchesAnyGlob(rel)) continue;
 
-          // If no query, just list matching files
-          if (!query) {
-            results.push({ path: rel });
-            if (results.length >= maxResults) return;
-            continue;
-          }
-
-          // skip big/binary-ish quickly
-          const stat = await fs.stat(full);
-          if (stat.size > 500_000) continue;
-
-          const content = await fs.readFile(full, "utf8").catch(() => null);
-          if (!content) continue;
-          const lines = content.split("\n");
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line && line.includes(query)) {
-              results.push({ path: rel, line: i + 1, text: line.slice(0, 300) });
+            if (!query) {
+              results.push({ path: rel });
               if (results.length >= maxResults) return;
+              continue;
+            }
+
+            const stat = await fs.stat(full);
+            if (stat.size > 500_000) continue;
+
+            const content = await fs.readFile(full, "utf8").catch(() => null);
+            if (!content) continue;
+            const lines = content.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line && line.includes(query)) {
+                results.push({ path: rel, line: i + 1, text: line.slice(0, 300) });
+                if (results.length >= maxResults) return;
+              }
             }
           }
+          if (results.length >= maxResults) return;
         }
-        if (results.length >= maxResults) return;
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          return;
+        }
+        if (err.code === "EACCES") {
+          return;
+        }
+        throw err;
       }
     }
 
-    await walk(ctx.projectRoot);
-    return results;
+    try {
+      await walk(ctx.projectRoot);
+      
+      if (results.length === 0 && globs.length > 0) {
+        return {
+          results: [],
+          message: `No files found matching globs: ${globs.join(", ")}\n` +
+            `Suggestion: Verify the glob patterns or try a broader search.`
+        };
+      }
+      
+      return results;
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        throw new Error(
+          `Project root not found: ${ctx.projectRoot}\n` +
+          `Suggestion: Verify the project path configuration.`
+        );
+      }
+      throw err;
+    }
   },
 };
 
