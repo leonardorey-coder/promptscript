@@ -3,13 +3,15 @@ log("🐾 Workflow: Landing page completa de gatos")
 # -----------------------------
 # Config LLM
 # -----------------------------
-dev = LLMClient({
+devConfig = {
   provider: "openrouter",
   apiKey: "OPENROUTER_API_KEY",
   model: "mistralai/devstral-2512:free",
   no_ask: true,
   maxTokens: 16384,
-})
+}
+
+dev = LLMClient(devConfig)
 
 memory_key = "landing.cats.v1"
 
@@ -82,7 +84,7 @@ log("Paso 4: (Opcional) Intentando correr tests si existen scripts...")
 
 pkgExists = apply("SEARCH", { query: "", globs: ["package.json"], maxResults: 1 })
 
-if (len(pkgExists) > 0) {
+if len(pkgExists) > 0:
   pkg = apply("READ_FILE", { path: "package.json", maxBytes: 200000 })
   
   run_agent(dev,
@@ -94,28 +96,20 @@ if (len(pkgExists) > 0) {
     "- Termina con REPORT done=true.\n",
     { memory_key: memory_key, require_write: false }
   )
-} else {
+else:
   log("No se encontró package.json. Saltando validación de scripts.")
-  apply("REPORT", {
-    message: "No hay package.json en el proyecto. Landing page creada sin scripts de build/test.",
-    done: true
-  })
-}
+  do("Reporta que no se encontró package.json en el proyecto y que la landing page fue creada sin scripts de build/test. Usa REPORT con done=true.")
 
 # -----------------------------
 # 5) Reporte final “bonito”
 # -----------------------------
 log("Paso 5: Reporte final")
 
-apply("REPORT", {
-  message: "Landing de gatos completa creada y refinada.",
-  filesChanged: ["public/index.html", "public/styles.css", "public/app.js"],
-  nextSuggestions: [
-    "Agregar imágenes reales en public/images y actualizar alt text",
-    "Agregar analytics/SEO (meta tags OG/Twitter)",
-    "Agregar test E2E (Playwright) para carrusel y navegación"
-  ],
-  done: true
-})
+do("Genera un reporte final indicando que la landing de gatos está completa y refinada. " +
+  "Incluye en el REPORT: " +
+  "- message: 'Landing de gatos completa creada y refinada.' " +
+  "- filesChanged: ['public/index.html', 'public/styles.css', 'public/app.js'] " +
+  "- nextSuggestions: ['Agregar imágenes reales en public/images y actualizar alt text', 'Agregar analytics/SEO (meta tags OG/Twitter)', 'Agregar test E2E (Playwright) para carrusel y navegación'] " +
+  "- done: true")
 
 log("✅ Workflow finalizado")

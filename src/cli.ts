@@ -18,7 +18,9 @@ import { PlanSpecSchema } from "./runtime/planspec";
 function argValue(flag: string): string | null {
   const idx = Bun.argv.indexOf(flag);
   if (idx === -1) return null;
-  return Bun.argv[idx + 1] ?? null;
+  const nextArg = Bun.argv[idx + 1];
+  if (!nextArg || nextArg.startsWith("--")) return null;
+  return nextArg;
 }
 
 function hasFlag(flag: string): boolean {
