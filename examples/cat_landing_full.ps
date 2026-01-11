@@ -1,0 +1,121 @@
+log("🐾 Workflow: Landing page completa de gatos")
+
+# -----------------------------
+# Config LLM
+# -----------------------------
+dev = LLMClient({
+  provider: "openrouter",
+  apiKey: "OPENROUTER_API_KEY",
+  model: "mistralai/devstral-2512:free",
+  no_ask: true,
+  maxTokens: 16384,
+})
+
+memory_key = "landing.cats.v1"
+
+# -----------------------------
+# 0) Recon del proyecto (determinista)
+# -----------------------------
+log("Recon: buscando estructura del proyecto...")
+files = apply("SEARCH", { query: "", globs: ["public/**", "src/**", "package.json", "README.md"], maxResults: 200 })
+
+# Si ya existe public/, ok; si no, el agente la creará con WRITE_FILE.
+# Nota: tu WRITE_FILE crea rutas intermedias? Si no, agrega tool MKDIR o usa RUN_CMD mkdir (si lo permites).
+
+# -----------------------------
+# 1) Crear base HTML/CSS/JS (estructura completa)
+# -----------------------------
+log("Paso 1: Generando base (index.html, styles.css, app.js)...")
+
+run_agent(dev,
+  "Crea una landing page COMPLETA y PROFESIONAL de gatos.\n" +
+  "Requisitos:\n" +
+  "- Archivos: public/index.html, public/styles.css, public/app.js\n" +
+  "- En index.html: header con nav, hero, sección de features, sección de galería/carrusel, sección FAQ, CTA final y footer.\n" +
+  "- Carrusel: botones prev/next + dots + soporte teclado; accesibilidad con aria-labels.\n" +
+  "- En styles.css: diseño moderno, responsive (mobile-first), tipografía limpia, buenas jerarquías, y carrusel bonito.\n" +
+  "- En app.js: lógica del carrusel (transform translateX), dots, teclado (← →), y opcional autoplay con pausa al hover.\n" +
+  "- No uses frameworks; puro HTML/CSS/JS.\n" +
+  "- Asegúrate de referenciar styles.css y app.js desde index.html.\n" +
+  "- Termina con un REPORT done=true e incluye filesChanged.\n",
+  { memory_key: memory_key, require_write: true }
+)
+
+# -----------------------------
+# 2) Integrar imágenes del proyecto si existen
+# -----------------------------
+log("Paso 2: Integrando imágenes si existen en public/images o images/...")
+
+imgHits = apply("SEARCH", { query: "", globs: ["public/images/**", "images/**"], maxResults: 50 })
+
+# Si hay imágenes, pídele al agente que las use. Si no, que use placeholders bonitos.
+run_agent(dev,
+  "Lee public/index.html y adapta la sección de carrusel/galería:\n" +
+  "- Si existen imágenes en public/images/** o images/** (según el listado previo), úsalas como <img> reales.\n" +
+  "- Si no hay imágenes, usa placeholders elegantes (gradientes + emojis) pero deja estructura lista para poner imágenes después.\n" +
+  "- Mantén accesibilidad: alt text descriptivo.\n" +
+  "- Mantén el carrusel funcionando con app.js.\n" +
+  "- Termina con REPORT done=true y filesChanged.\n",
+  { memory_key: memory_key, require_write: true }
+)
+
+# -----------------------------
+# 3) QA: Validación y mejora (accesibilidad + responsive + limpieza)
+# -----------------------------
+log("Paso 3: QA (accesibilidad, responsive, performance)...")
+
+run_agent(dev,
+  "QA sobre la landing:\n" +
+  "- Revisa public/index.html, public/styles.css, public/app.js.\n" +
+  "- Mejora accesibilidad (aria, focus states, contraste, navegación teclado).\n" +
+  "- Mejora responsive (breakpoints, tamaños, spacing).\n" +
+  "- Evita código duplicado y deja comentarios mínimos útiles.\n" +
+  "- No rompas el carrusel.\n" +
+  "- Termina con REPORT done=true y filesChanged.\n",
+  { memory_key: memory_key, require_write: true }
+)
+
+# -----------------------------
+# 4) (Opcional) Ejecutar build/test si existe (solo si lo permites)
+# -----------------------------
+log("Paso 4: (Opcional) Intentando correr tests si existen scripts...")
+
+pkgExists = apply("SEARCH", { query: "", globs: ["package.json"], maxResults: 1 })
+
+if (len(pkgExists) > 0) {
+  pkg = apply("READ_FILE", { path: "package.json", maxBytes: 200000 })
+  
+  run_agent(dev,
+    "El proyecto tiene package.json. Revisa si hay scripts útiles para validar (build o test).\n" +
+    "Reglas:\n" +
+    "- Si no estás seguro, NO ejecutes comandos.\n" +
+    "- Si decides ejecutar, usa RUN_CMD con timeout <= 60000.\n" +
+    "- Si falla, arregla lo mínimo necesario en public/*.\n" +
+    "- Termina con REPORT done=true.\n",
+    { memory_key: memory_key, require_write: false }
+  )
+} else {
+  log("No se encontró package.json. Saltando validación de scripts.")
+  apply("REPORT", {
+    message: "No hay package.json en el proyecto. Landing page creada sin scripts de build/test.",
+    done: true
+  })
+}
+
+# -----------------------------
+# 5) Reporte final “bonito”
+# -----------------------------
+log("Paso 5: Reporte final")
+
+apply("REPORT", {
+  message: "Landing de gatos completa creada y refinada.",
+  filesChanged: ["public/index.html", "public/styles.css", "public/app.js"],
+  nextSuggestions: [
+    "Agregar imágenes reales en public/images y actualizar alt text",
+    "Agregar analytics/SEO (meta tags OG/Twitter)",
+    "Agregar test E2E (Playwright) para carrusel y navegación"
+  ],
+  done: true
+})
+
+log("✅ Workflow finalizado")
