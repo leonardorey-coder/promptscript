@@ -1,11 +1,11 @@
 log("╔════════════════════════════════════════╗")
-log("║  Landing Page Pipeline v0.5 (Mock)    ║")
+log("║  Landing Page Pipeline v0.45 (Mock)    ║")
 log("║  Quality-gated CI humana               ║")
 log("╚════════════════════════════════════════╝")
 log("")
 
 log("Stage 1: Verify (deterministic checks)")
-verify_result = call("examples/v05/landing_verify.ps", {
+verify_result = call("examples/v045/landing_verify.ps", {
   stage: "verify",
   return_contract: true
 })
@@ -43,7 +43,7 @@ log("Artifacts:")
 log("  - public/landing.html")
 log("  - public/landing.css")
 log("")
-log("Features v0.5 probadas:")
+log("Features v0.45 probadas:")
 log("  ✓ Sub-workflows con budgets por stage")
 log("  ✓ Quality contracts estructurados")
 log("  ✓ Stage tracking")

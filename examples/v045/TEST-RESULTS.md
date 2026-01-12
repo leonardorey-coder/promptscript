@@ -1,4 +1,4 @@
-# PromptScript v0.5 - Test Results
+# PromptScript v0.45 - Test Results
 
 ## Fecha: 2026-01-11
 
@@ -7,7 +7,7 @@
 ### ✅ Test 1: Verify Stage (Determinístico)
 
 ```bash
-psc run examples/v05/landing_verify.ps --project .
+psc run examples/v045/landing_verify.ps --project .
 ```
 
 **Resultado:** ✅ PASS
@@ -20,7 +20,7 @@ psc run examples/v05/landing_verify.ps --project .
 ### ✅ Test 2: Sub-workflow con Budgets
 
 ```bash
-psc run examples/v05/test-subworkflow.ps --project .
+psc run examples/v045/test-subworkflow.ps --project .
 ```
 
 **Resultado:** ✅ PASS
@@ -46,7 +46,7 @@ Features probadas:
 ### ✅ Test 3: Pipeline Mock Completo
 
 ```bash
-psc run examples/v05/test-pipeline-mock.ps --project .
+psc run examples/v045/test-pipeline-mock.ps --project .
 ```
 
 **Resultado:** ✅ PASS
@@ -63,7 +63,7 @@ Output:
 
 ```
 ╔════════════════════════════════════════╗
-║  Landing Page Pipeline v0.5 (Mock)    ║
+║  Landing Page Pipeline v0.45 (Mock)    ║
 ║  Quality-gated CI humana               ║
 ╚════════════════════════════════════════╝
 
@@ -137,7 +137,7 @@ Ejemplo de evento:
 
 ## Resumen
 
-### Features v0.5 Verificadas
+### Features v0.45 Verificadas
 
 1. ✅ **Sub-workflows Mejorados**
    - Budgets por stage funcionando
@@ -170,9 +170,9 @@ Ejemplo de evento:
 
 ### Archivos de Test Creados
 
-- `examples/v05/test-subworkflow.ps` - Test de sub-workflows con budgets
-- `examples/v05/test-pipeline-mock.ps` - Test de pipeline completo
-- `examples/v05/TEST-RESULTS.md` - Este archivo
+- `examples/v045/test-subworkflow.ps` - Test de sub-workflows con budgets
+- `examples/v045/test-pipeline-mock.ps` - Test de pipeline completo
+- `examples/v045/TEST-RESULTS.md` - Este archivo
 
 ### Próximos Tests (con LLM)
 
@@ -180,21 +180,21 @@ Para probar con LLM real (requiere API key):
 
 ```bash
 # Build stage (creativo)
-psc run examples/v05/landing_build.ps --project .
+psc run examples/v045/landing_build.ps --project .
 
 # Responsive stage (UX)
-psc run examples/v05/landing_responsive.ps --project .
+psc run examples/v045/landing_responsive.ps --project .
 
 # Fix stage (reparación)
-psc run examples/v05/landing_fix.ps --project .
+psc run examples/v045/landing_fix.ps --project .
 
 # Pipeline completo
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 ```
 
 ## Conclusión
 
-✅ **PromptScript v0.5 está funcionando correctamente**
+✅ **PromptScript v0.45 está funcionando correctamente**
 
 Todas las features principales han sido probadas y funcionan:
 

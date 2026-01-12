@@ -1,4 +1,4 @@
-# PromptScript v0.5 - Quickstart
+# PromptScript v0.45 - Quickstart
 
 ## Instalación
 
@@ -10,13 +10,13 @@ bun install
 psc --help
 ```
 
-## Nuevas Features v0.5
+## Nuevas Features v0.45
 
 ### 1. Pipeline de Landing Page
 
 ```bash
 # Ejecutar pipeline completo
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 ```
 
 **Pipeline:**
@@ -72,15 +72,15 @@ else:
 
 ```bash
 # Run workflow
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 
 # Replay
 psc replay <runId>
 
 # Stages individuales
-psc run examples/v05/landing_build.ps --project .
-psc run examples/v05/landing_verify.ps --project .
-psc run examples/v05/landing_fix.ps --project .
+psc run examples/v045/landing_build.ps --project .
+psc run examples/v045/landing_verify.ps --project .
+psc run examples/v045/landing_fix.ps --project .
 ```
 
 ## Ejemplos
@@ -88,7 +88,7 @@ psc run examples/v05/landing_fix.ps --project .
 ### Landing Page Completa
 
 ```bash
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 ```
 
 Crea landing page con:
@@ -127,7 +127,7 @@ if test_result.contract.ok:
 ## Estructura de Archivos
 
 ```
-examples/v05/
+examples/v045/
 ├── landing_build.ps       # Stage 1: Build
 ├── landing_responsive.ps  # Stage 2: Responsive
 ├── landing_verify.ps      # Stage 3: Verify
@@ -137,8 +137,8 @@ examples/v05/
 
 ## Documentación Completa
 
-- [docs/v05-features.md](docs/v05-features.md) - Features detalladas
-- [CHANGELOG-v05.md](CHANGELOG-v05.md) - Changelog completo
+- [docs/v045-features.md](docs/v045-features.md) - Features detalladas
+- [CHANGELOG-v045.md](CHANGELOG-v045.md) - Changelog completo
 - [src/tui/README.md](src/tui/README.md) - Documentación TUI
 
 ## Migración desde v0.4
@@ -149,7 +149,7 @@ Todos los workflows v0.4 funcionan sin cambios. Las nuevas features son opcional
 # v0.4 (sigue funcionando)
 result = call("workflow.ps")
 
-# v0.5 (con nuevas opciones)
+# v0.45 (con nuevas opciones)
 result = call("workflow.ps", {
   stage: "build",           # Nuevo
   return_contract: true,    # Nuevo
@@ -175,7 +175,7 @@ bun --version  # Debe ser >= 1.0
 
 ```bash
 # Ver logs detallados
-psc run examples/v05/landing_verify.ps --project . --verbose
+psc run examples/v045/landing_verify.ps --project . --verbose
 
 # Replay para debug
 psc replay <runId>
@@ -195,14 +195,14 @@ result = call("workflow.ps", {
 
 ## Próximos Pasos
 
-1. Explorar ejemplos en `examples/v05/`
+1. Explorar ejemplos en `examples/v045/`
 2. Crear tu propio pipeline
 3. Usar TUI para observabilidad
 4. Implementar quality gates
-5. Leer docs completas en `docs/v05-features.md`
+5. Leer docs completas en `docs/v045-features.md`
 
 ## Soporte
 
 - Issues: GitHub Issues
 - Docs: `docs/` folder
-- Examples: `examples/v05/`
+- Examples: `examples/v045/`

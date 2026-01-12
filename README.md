@@ -42,7 +42,7 @@ Principios de diseño 1. El DSL controla el flujo 2. El LLM no controla la ejecu
 
 ⸻
 
-Características v0.5
+Características v0.45
 
 **Nuevas Features:**
 
@@ -61,7 +61,7 @@ Características v0.5
 - **Archive Memory** - Archivar STM a LTM con `archive()`
 - **Approvals** - Sistema de aprobación para acciones críticas
 
-Ver [docs/v05-features.md](docs/v05-features.md) y [docs/v04-features.md](docs/v04-features.md) para detalles completos.
+Ver [docs/v045-features.md](docs/v045-features.md) y [docs/v04-features.md](docs/v04-features.md) para detalles completos.
 
 Características
 

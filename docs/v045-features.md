@@ -1,10 +1,10 @@
-# PromptScript v0.5 - Features
+# PromptScript v0.45 - Features
 
 ## Fecha: 2026-01-11
 
 ## Resumen
 
-PromptScript v0.5 introduce mejoras significativas en sub-workflows y quality gates:
+PromptScript v0.45 introduce mejoras significativas en sub-workflows y quality gates:
 
 1. **Sub-workflows mejorados** - Budgets por stage, replay encadenado, quality gates
 2. **Quality Contracts** - Contratos estructurados para verificación de calidad
@@ -192,7 +192,7 @@ Build → Responsive → Verify
 
 ### Ejemplo Completo
 
-Ver `examples/v05/landing_full.ps` para implementación completa.
+Ver `examples/v045/landing_full.ps` para implementación completa.
 
 ### Características
 
@@ -209,7 +209,7 @@ Ver `examples/v05/landing_full.ps` para implementación completa.
 ### 1. Landing Page Completa
 
 ```bash
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 ```
 
 Pipeline completo:
@@ -269,7 +269,7 @@ if not verify_result.contract.ok:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│         PromptScript Runtime v0.5               │
+│         PromptScript Runtime v0.45               │
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │  ┌──────────────┐   ┌───────────────┐          │
@@ -299,7 +299,7 @@ Todas las features de v0.4 siguen funcionando. Las nuevas features son opcionale
 # Antes (v0.4)
 result = call("workflow.ps")
 
-# Ahora (v0.5)
+# Ahora (v0.45)
 result = call("workflow.ps", {
   stage: "build",           # Nuevo: nombre del stage
   return_contract: true,    # Nuevo: retornar contrato
@@ -319,7 +319,7 @@ log("Contract: " + result.contract.ok)
 
 ```bash
 # Run (igual que v0.4)
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 
 # Replay (igual que v0.4)
 psc replay <runId>
@@ -327,7 +327,7 @@ psc replay <runId>
 
 ---
 
-## Roadmap v0.6
+## Roadmap v0.5 (Futuro)
 
 - [ ] Auto-recall en verify stages
 - [ ] Embeddings para LTM (búsqueda semántica)
@@ -340,6 +340,6 @@ psc replay <runId>
 
 ## Referencias
 
-- [CHANGELOG-v05.md](../CHANGELOG-v05.md)
+- [CHANGELOG-v045.md](../CHANGELOG-v045.md)
 - [v04-features.md](./v04-features.md)
-- [Ejemplos v0.5](../examples/v05/)
+- [Ejemplos v0.45](../examples/v045/)

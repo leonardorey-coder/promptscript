@@ -1,10 +1,10 @@
-# PromptScript v0.5 - Changelog
+# PromptScript v0.45 - Changelog
 
 ## Fecha: 2026-01-11
 
 ## Resumen
 
-PromptScript v0.5 introduce mejoras significativas en sub-workflows y quality gates para workflows agenticos complejos.
+PromptScript v0.45 introduce mejoras significativas en sub-workflows y quality gates para workflows agenticos complejos.
 
 ### Features Principales
 
@@ -147,11 +147,11 @@ context = recall("codebase", "landing structure", { top_k: 3 })
 
 **Archivos nuevos:**
 
-- `examples/v05/landing_build.ps` - Stage creativo (LLM genera)
-- `examples/v05/landing_responsive.ps` - Stage UX/mobile
-- `examples/v05/landing_verify.ps` - Stage determinístico (checks)
-- `examples/v05/landing_fix.ps` - Stage de reparación
-- `examples/v05/landing_full.ps` - Orquestador completo
+- `examples/v045/landing_build.ps` - Stage creativo (LLM genera)
+- `examples/v045/landing_responsive.ps` - Stage UX/mobile
+- `examples/v045/landing_verify.ps` - Stage determinístico (checks)
+- `examples/v045/landing_fix.ps` - Stage de reparación
+- `examples/v045/landing_full.ps` - Orquestador completo
 
 **Funcionalidad:**
 
@@ -176,14 +176,14 @@ Build → Responsive → Verify
 **Ejemplo de uso:**
 
 ```bash
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 ```
 
 Output:
 
 ```
 ╔════════════════════════════════════════╗
-║  Landing Page Pipeline v0.5            ║
+║  Landing Page Pipeline v0.45            ║
 ║  Quality-gated CI humana               ║
 ╚════════════════════════════════════════╝
 
@@ -219,18 +219,18 @@ Total cost: $0.039
 
 ## Archivos Nuevos
 
-### Ejemplos v0.5
+### Ejemplos v0.45
 
-- `examples/v05/landing_build.ps` (25 líneas)
-- `examples/v05/landing_responsive.ps` (30 líneas)
-- `examples/v05/landing_verify.ps` (50 líneas)
-- `examples/v05/landing_fix.ps` (25 líneas)
-- `examples/v05/landing_full.ps` (60 líneas)
+- `examples/v045/landing_build.ps` (25 líneas)
+- `examples/v045/landing_responsive.ps` (30 líneas)
+- `examples/v045/landing_verify.ps` (50 líneas)
+- `examples/v045/landing_fix.ps` (25 líneas)
+- `examples/v045/landing_full.ps` (60 líneas)
 
 ### Documentación
 
-- `docs/v05-features.md` (450 líneas)
-- `CHANGELOG-v05.md` (este archivo)
+- `docs/v045-features.md` (450 líneas)
+- `CHANGELOG-v045.md` (este archivo)
 
 ---
 
@@ -259,7 +259,7 @@ Total cost: $0.039
 ### Pipeline Completo
 
 ```bash
-bun run src/cli.ts run examples/v05/landing_full.ps --project .
+bun run src/cli.ts run examples/v045/landing_full.ps --project .
 ```
 
 ✅ Build stage ejecuta correctamente
@@ -279,7 +279,7 @@ bun run src/cli.ts run examples/v05/landing_full.ps --project .
 Pipeline de 5 stages con quality gates:
 
 ```bash
-psc run examples/v05/landing_full.ps --project .
+psc run examples/v045/landing_full.ps --project .
 ```
 
 - Build: Crea HTML/CSS base
@@ -366,11 +366,11 @@ if not verify_result.contract.ok:
 
 ```bash
 # Pipeline completo
-bun run src/cli.ts run examples/v05/landing_full.ps --project .
+bun run src/cli.ts run examples/v045/landing_full.ps --project .
 
 # Stages individuales
-bun run src/cli.ts run examples/v05/landing_build.ps --project .
-bun run src/cli.ts run examples/v05/landing_verify.ps --project .
+bun run src/cli.ts run examples/v045/landing_build.ps --project .
+bun run src/cli.ts run examples/v045/landing_verify.ps --project .
 
 # Replay
 bun run src/cli.ts replay <runId> --project .
@@ -385,14 +385,14 @@ bun run src/cli.ts replay <runId> --project .
 bun run src/cli.ts --help
 
 # Probar pipeline
-bun run src/cli.ts run examples/v05/landing_full.ps --project .
+bun run src/cli.ts run examples/v045/landing_full.ps --project .
 ```
 
 ---
 
 ## Créditos
 
-Implementado siguiendo el diseño propuesto para v0.5.
+Implementado siguiendo el diseño propuesto para v0.45.
 
 Features inspiradas en:
 
@@ -404,6 +404,6 @@ Features inspiradas en:
 
 ## Referencias
 
-- [docs/v05-features.md](docs/v05-features.md) - Documentación completa
+- [docs/v045-features.md](docs/v045-features.md) - Documentación completa
 - [CHANGELOG-v04.md](CHANGELOG-v04.md) - Changelog anterior
-- [examples/v05/](examples/v05/) - Ejemplos canónicos
+- [examples/v045/](examples/v045/) - Ejemplos canónicos

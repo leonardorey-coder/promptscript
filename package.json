@@ -1,6 +1,6 @@
 {
   "name": "promptscript",
-  "version": "0.5.0",
+  "version": "0.45.0",
   "type": "module",
   "bin": {
     "promptscript": "./src/cli.ts",
