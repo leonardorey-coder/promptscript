@@ -1,220 +1,463 @@
-PromptScript
+<div align="center">
 
-Deterministic orchestration language for LLM agents
+# 🚀 PromptScript
 
-PromptScript es un lenguaje (DSL) y runtime para orquestar agentes basados en LLM de forma determinista, auditable y segura.
+> **Deterministic Agent Workflows, Written as Code**
 
-A diferencia de frameworks agenticos basados en conversaciones implícitas, PromptScript separa claramente el razonamiento del control de ejecución:
+[![Version](https://img.shields.io/badge/version-0.45.0-blue.svg)](https://github.com/your-org/prompts-lang)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-1.0+-black.svg)](https://bun.sh)
 
-El LLM propone acciones.
-El runtime decide qué se ejecuta, cuándo y bajo qué reglas.
+**A code-first language and runtime for building long-running, auditable, and safe LLM workflows**
 
-⸻
+[Features](#-key-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Examples](#-examples)
 
-El problema
+---
 
-Los agentes LLM actuales suelen ser:
-• impredecibles
-• difíciles de auditar
-• propensos a loops infinitos
-• peligrosos en producción
-• imposibles de reproducir
+</div>
 
-Esto los vuelve frágiles para repositorios reales, equipos grandes y entornos productivos.
+## 🎯 Why PromptScript?
 
-⸻
+<div align="center">
 
-La solución
+### Modern LLM agents fail in production because of:
 
-PromptScript introduce:
-• Control de flujo explícito
-• Contratos formales (Plan / IR)
-• Ejecución paso a paso
-• Sandbox estricto
-• Replay determinista
-• Políticas duras (budgets, allowlists, approvals)
+| ❌ **Problem**                 | ✅ **PromptScript Solution**           |
+| ------------------------------ | -------------------------------------- |
+| Context bloat and rising costs | Memory tiers (STM/LTM) with forgetting |
+| Lack of determinism and replay | Full timeline replay with diffs        |
+| Unsafe tool execution          | Policy engine with sandboxing          |
+| No clear memory model          | Explicit memory architecture           |
 
-Todo lo necesario para usar agentes LLM sin perder control.
+</div>
 
-⸻
+> **💡 PromptScript solves this by treating agent workflows like software, not chats.**
 
-Principios de diseño 1. El DSL controla el flujo 2. El LLM no controla la ejecución 3. Toda salida es validada 4. Toda acción es auditada 5. Toda ejecución es reproducible
+---
 
-⸻
+## 🧠 Core Concepts
 
-Características v0.45
+### <img src="https://img.shields.io/badge/Runtime-Deterministic-blue?style=flat-square" alt="Deterministic Runtime" />
 
-**Nuevas Features:**
+- Every action is explicit (`READ_FILE`, `WRITE_FILE`, `RUN_CMD`, …)
+- All side effects are logged and replayable
+- Budgets and policies are enforced at runtime
 
-- **Sub-workflows Mejorados** - Budgets por stage, replay encadenado
-- **Quality Contracts** - Sistema de contratos estructurados para verificación
-- **Memoria por Stage** - Checkpoints limpios y forgetting por etapa
-- **Pipeline Pattern** - Patrón canónico para CI humana (build → verify → fix)
+### <img src="https://img.shields.io/badge/Memory-Tiered-purple?style=flat-square" alt="Memory Architecture" />
 
-**Features v0.4:**
+- **Short-term memory (STM)** - Working set
+- **Long-term memory (LTM)** - Project knowledge
+- Human-like forgetting with checkpoints
+- On-demand recall instead of transcript replay
 
-- **Sub-workflows** - Composición con `run()` y `call()`
-- **Memoria Jerárquica** - STM/LTM con `build_memory()` y `recall()`
-- **STM Forgetting** - Compactación tipo humano con checkpoints
-- **TOON Serialization** - Reducción de tokens ~20-40%
-- **RECALL Tool** - Agentes pueden pedir contexto explícitamente
-- **Archive Memory** - Archivar STM a LTM con `archive()`
-- **Approvals** - Sistema de aprobación para acciones críticas
+### <img src="https://img.shields.io/badge/Plans-Validated-green?style=flat-square" alt="Plans Not Prompts" />
 
-Ver [docs/v045-features.md](docs/v045-features.md) y [docs/v04-features.md](docs/v04-features.md) para detalles completos.
+- LLMs return **plans**, not free-form text
+- Plans are validated before execution
+- Markdown → PlanSpec → PromptScript
 
-Características
+### <img src="https://img.shields.io/badge/Replay-Full%20Timeline-orange?style=flat-square" alt="Replay & Audit" />
 
-Lenguaje (DSL)
-• Sintaxis simple, tipo Python
-• Variables y funciones
-• if, while, break, return
-• Builtins controlados (llm, tool, log)
+- Full timeline of actions
+- Diffs per step
+- Deterministic re-runs
 
-Runtime
-• Ejecución secuencial y determinista
-• Validación estricta del output del LLM
-• Sandboxing de archivos y comandos
-• Presupuestos de ejecución (steps, tiempo, tools)
-• Detección de loops patológicos
+---
 
-Observabilidad
-• Logs por step (JSONL)
-• Estado serializable
-• Replay exacto sin side-effects
+## 💻 Example
 
-⸻
+```ps
+log("Build landing page")
 
-Ejemplo
-
-system = "Responde SOLO JSON válido con action/args/done."
-done = false
-
-def step():
-plan = llm({
-"system": system,
-"user": "Siguiente acción para avanzar el proyecto",
-"json_schema": {
-"type": "object",
-"properties": {
-"action": { "type": "string" },
-"args": { "type": "object" },
-"done": { "type": "boolean" }
-},
-"required": ["action", "args", "done"]
-}
+client = LLMClient({
+  provider: "openrouter",
+  model: "mistralai/devstral-2512:free",
+  no_ask: true,
 })
 
-if plan.action == "PATCH_FILE":
-tool("PATCH_FILE", plan.args)
+run_agent(client,
+  "Create a complete, responsive landing page for cats",
+  { require_write: true }
+)
 
-if plan.action == "RUN_CMD":
-tool("RUN_CMD", plan.args)
+apply("REPORT", { message: "Landing created", done: true })
+```
 
-while not done:
-step()
+**How PromptScript executes this:**
 
-⸻
+1. 🧠 LLM generates a **plan**
+2. ✅ Runtime validates the plan
+3. 🔧 Tools execute under policy
+4. 📝 Results are logged and replayable
 
-Arquitectura
+---
 
-PromptScript (.ps)
-↓
-Parser → AST
-↓
-Runtime (determinista)
-├─ LLM Adapter (Plan)
-├─ Tool Registry
-├─ Policy Engine
-└─ Sandbox
-↓
-Logs + Replay
+## ✨ Key Features
 
-⸻
+<table>
+<tr>
+<td width="50%">
 
-Especificaciones (RFCs)
+### 🎯 Deterministic Execution
 
-PromptScript se define mediante especificaciones formales:
-• RFC-0001 — Language Specification
-• RFC-0002 — Runtime Execution Model
-• RFC-0003 — Tool Interface & Policy
+- No hidden side effects
+- Explicit tool calls
+- Strong safety guarantees
 
-La implementación debe seguir estrictamente los RFCs. Cualquier cambio incompatible requiere un nuevo RFC.
+</td>
+<td width="50%">
 
-⸻
+### 🧠 Memory Architecture
 
-Seguridad
+- Short-term memory (STM)
+- Long-term memory (LTM)
+- Checkpoints + forgetting
 
-El runtime:
-• nunca ejecuta código arbitrario
-• no permite escapar del workspace
-• valida todas las entradas
-• aplica allowlists estrictas
-• registra cada acción
+</td>
+</tr>
+<tr>
+<td width="50%">
 
-El LLM no tiene acceso directo al sistema.
+### 🔗 Composable Workflows <kbd>v0.45+</kbd>
 
-⸻
+- Sub-workflows (`run`, `call`)
+- Pipelines with quality gates
+- Reusable workflow modules
 
-Estado del proyecto
+</td>
+<td width="50%">
 
-Status: Active development (v0.x)
-• DSL y RFCs estables
-• Runtime core en desarrollo
-• CLI local en progreso
+### 💰 Token Efficiency
 
-⸻
+- Optional TOON serialization
+- 20-40% token reduction
+- Reduced context size and cost
 
-Casos de uso
-• Generación de código iterativa
-• Refactors largos
-• Agentes de testing
-• Migraciones
-• Documentación automática
-• Mantenimiento de repositorios
+</td>
+</tr>
+</table>
 
-⸻
+---
 
-Open Source y Comercial
+## 📊 PromptScript vs Others
 
-PromptScript sigue un modelo open-core:
+<div align="center">
 
-Open Source
-• Lenguaje (DSL)
-• Parser y AST
-• Runtime core
-• RFCs
+| Feature                      |             PromptScript              |            Visual Builders             |             SDK Frameworks             |
+| ---------------------------- | :-----------------------------------: | :------------------------------------: | :------------------------------------: |
+| <b>Deterministic runtime</b> | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   | <span style="color: orange;">⚠️</span> |
+| <b>Replay & audit</b>        | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
+| <b>Memory tiers</b>          | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
+| <b>Policy enforcement</b>    | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   | <span style="color: orange;">⚠️</span> |
+| <b>CLI-first UX</b>          | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   |  <span style="color: red;">❌</span>   |
 
-Comercial
-• Runtime avanzado
-• Observabilidad premium
-• Approval gates
-• Ejecución en la nube
-• Integraciones enterprise
+> **PromptScript is designed for engineers, not just demos.**
 
-⸻
+</div>
 
-Instalación (temporal)
+---
 
-La CLI aún está en desarrollo.
+## 🚀 Quick Start
 
+### Installation
+
+```bash
 git clone https://github.com/your-org/prompts-lang
 cd prompts-lang
 bun install
+```
 
-⸻
+### Run Your First Workflow
 
-Contribuir 1. Lee los RFCs 2. Abre un issue antes de cambios grandes 3. Usa el proceso de RFC para breaking changes 4. PRs pequeños y auditables
+```bash
+# Run a PromptScript file
+psc run examples/workflow.ps --project .
 
-⸻
+# Compile and run from Markdown plan
+psc run plan.md --from-md --project .
 
-Licencia
-• DSL y runtime core: MIT / Apache 2.0
-• Componentes comerciales: licencia propietaria
+# Replay a previous run
+psc replay <runId> --project .
+```
 
-⸻
+---
 
-Filosofía
+## 📖 Documentation
 
-Los LLMs razonan.
-PromptScript decide.
+<div align="center">
+
+| 📚 Documentation                            | 📝 Description                          |
+| ------------------------------------------- | --------------------------------------- |
+| [**v0.45 Features**](docs/v045-features.md) | Sub-workflows, quality gates, pipelines |
+| [**v0.4 Features**](docs/v04-features.md)   | Memory architecture, TOON, approvals    |
+| [**Quick Start**](QUICKSTART-v045.md)       | Get started in 5 minutes                |
+| [**Changelog**](CHANGELOG-v045.md)          | Version history and changes             |
+
+</div>
+
+---
+
+## 🎨 Features v0.45
+
+<div align="center">
+
+### 🆕 New Features
+
+| Feature                          | Description                                           |
+| -------------------------------- | ----------------------------------------------------- |
+| <b>🔗 Enhanced Sub-workflows</b> | Budgets per stage, chained replay                     |
+| <b>✅ Quality Contracts</b>      | Structured contracts for verification                 |
+| <b>🧠 Memory per Stage</b>       | Clean checkpoints and forgetting per stage            |
+| <b>🏗️ Pipeline Pattern</b>       | Canonical pattern for human CI (build → verify → fix) |
+
+### 📦 v0.4 Features
+
+| Feature                       | Description                                  |
+| ----------------------------- | -------------------------------------------- |
+| <b>🔗 Sub-workflows</b>       | Composition with `run()` and `call()`        |
+| <b>🧠 Hierarchical Memory</b> | STM/LTM with `build_memory()` and `recall()` |
+| <b>🧹 STM Forgetting</b>      | Human-like compaction with checkpoints       |
+| <b>📦 TOON Serialization</b>  | 20-40% token reduction                       |
+| <b>🔍 RECALL Tool</b>         | Agents can explicitly request context        |
+| <b>📚 Archive Memory</b>      | Archive STM to LTM with `archive()`          |
+| <b>✅ Approvals</b>           | Approval system for critical actions         |
+
+</div>
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────┐
+│      PromptScript (.ps)                 │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+          ┌───────────────┐
+          │  Parser → AST │
+          └───────┬───────┘
+                  │
+                  ▼
+    ┌─────────────────────────────┐
+    │  Runtime (Deterministic)    │
+    ├─ LLM Adapter (Plan)         │
+    ├─ Tool Registry              │
+    ├─ Policy Engine              │
+    └─ Sandbox                    │
+                  │
+                  ▼
+          ┌───────────────┐
+          │ Logs + Replay │
+          └───────────────┘
+```
+
+---
+
+## 📋 Technical Specifications
+
+### Language (DSL)
+
+- <kbd>Python-like</kbd> syntax
+- Variables and functions
+- Control flow: `if`, `while`, `break`, `return`
+- Controlled builtins: `llm`, `tool`, `log`
+
+### Runtime
+
+- <kbd>Sequential</kbd> and deterministic execution
+- <kbd>Strict</kbd> validation of LLM output
+- <kbd>Sandboxing</kbd> of files and commands
+- <kbd>Budget</kbd> enforcement (steps, time, tools)
+- <kbd>Loop detection</kbd> for pathological patterns
+
+### Observability
+
+- <kbd>JSONL</kbd> logs per step
+- <kbd>Serializable</kbd> state
+- <kbd>Exact</kbd> replay without side-effects
+
+---
+
+## 🔒 Security
+
+<div align="center">
+
+### The runtime:
+
+| ✅ **Guarantee**                | 📝 **Description**       |
+| ------------------------------- | ------------------------ |
+| **No arbitrary code execution** | Only explicit tool calls |
+| **Workspace isolation**         | Cannot escape workspace  |
+| **Input validation**            | All inputs validated     |
+| **Strict allowlists**           | Policy-based permissions |
+| **Full audit trail**            | Every action logged      |
+
+> **🔐 The LLM has no direct access to the system.**
+
+</div>
+
+---
+
+## 🗺️ Roadmap
+
+<div align="center">
+
+| Version      | Status | Features                                                                    |
+| ------------ | :----: | --------------------------------------------------------------------------- |
+| <b>v0.4</b>  |   ✅   | Runtime Core - Deterministic plans, Memory (STM/LTM), Replay + forgetting   |
+| <b>v0.45</b> |   ✅   | Composable Pipelines - Sub-workflows, Quality gates, Pipeline orchestration |
+| <b>v0.5</b>  |   🚧   | MCP Integration - External tools via MCP, Secure tool routing               |
+
+</div>
+
+---
+
+## 💼 Use Cases
+
+<div align="center">
+
+<table>
+<tr>
+<td align="center" width="33%">
+
+### 🤖 CI/CD Automation
+
+Agent-based CI/CD pipelines with quality gates
+
+</td>
+<td align="center" width="33%">
+
+### 🎨 UI Generation & QA
+
+Automated UI generation and testing
+
+</td>
+<td align="center" width="33%">
+
+### 🔄 Refactors & Migrations
+
+Safe, auditable code refactoring
+
+</td>
+</tr>
+<tr>
+<td align="center" width="33%">
+
+### ⏱️ Long-running Agents
+
+Agents that run for hours or days
+
+</td>
+<td align="center" width="33%">
+
+### 🏗️ Infrastructure Workflows
+
+Infrastructure automation with safety
+
+</td>
+<td align="center" width="33%">
+
+### 📚 Documentation
+
+Automated documentation generation
+
+</td>
+</tr>
+</table>
+
+</div>
+
+---
+
+## 📝 Complete Example
+
+```ps
+system = "Respond ONLY with valid JSON containing action/args/done."
+
+done = false
+
+def step():
+  plan = llm({
+    "system": system,
+    "user": "Next action to advance the project",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "args": { "type": "object" },
+        "done": { "type": "boolean" }
+      },
+      "required": ["action", "args", "done"]
+    }
+  })
+
+  if plan.action == "PATCH_FILE":
+    tool("PATCH_FILE", plan.args)
+
+  if plan.action == "RUN_CMD":
+    tool("RUN_CMD", plan.args)
+
+  if plan.done:
+    done = true
+
+while not done:
+  step()
+```
+
+---
+
+## 🤝 Contributing
+
+<div align="center">
+
+### We welcome contributions!
+
+1. 📖 Read the RFCs
+2. 🐛 Open an issue before major changes
+3. 📋 Use the RFC process for breaking changes
+4. 🔍 Keep PRs small and auditable
+
+</div>
+
+---
+
+## 📄 License
+
+<div align="center">
+
+- **DSL and runtime core**: MIT / Apache 2.0
+- **Commercial components**: Proprietary license
+
+</div>
+
+---
+
+## 💭 Philosophy
+
+<div align="center">
+
+> ### **LLM agents should behave like software, not chats.**
+
+PromptScript treats every agent step as code:
+
+- <b style="color: #4CAF50;">observable</b>
+- <b style="color: #2196F3;">auditable</b>
+- <b style="color: #FF9800;">reproducible</b>
+
+---
+
+### **LLMs reason. PromptScript decides.**
+
+</div>
+
+---
+
+<div align="center">
+
+**Made with ❤️ for engineers who want production-grade LLM workflows**
+
+[⭐ Star us on GitHub](https://github.com/your-org/prompts-lang) • [📖 Read the Docs](docs/) • [🐛 Report Issues](https://github.com/your-org/prompts-lang/issues)
+
+</div>
