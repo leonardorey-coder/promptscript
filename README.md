@@ -5,7 +5,7 @@
 > **Deterministic Agent Workflows, Written as Code**
 
 [![Version](https://img.shields.io/badge/version-0.45.0-blue.svg)](https://github.com/your-org/prompts-lang)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Bun-1.0+-black.svg)](https://bun.sh)
 
@@ -567,8 +567,10 @@ while not done:
 
 <div align="center">
 
-- **DSL and runtime core**: MIT / Apache 2.0
-- **Commercial components**: Proprietary license
+**PromptScript is open-core.**
+
+- **The language and runtime core** are licensed under **Apache 2.0**
+- **Managed Cloud services and enterprise features** are proprietary
 
 </div>
 
