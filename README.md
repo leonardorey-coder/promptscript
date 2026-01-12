@@ -563,6 +563,19 @@ while not done:
 
 ---
 
+## 📊 Status
+
+<div align="center">
+
+**PromptScript is in early development.**
+
+- APIs may change
+- Feedback is welcome
+
+</div>
+
+---
+
 ## 📄 License
 
 <div align="center">
