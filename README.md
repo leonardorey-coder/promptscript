@@ -144,17 +144,157 @@ apply("REPORT", { message: "Landing created", done: true })
 
 <div align="center">
 
-| Feature                      |             PromptScript              |            Visual Builders             |             SDK Frameworks             |
-| ---------------------------- | :-----------------------------------: | :------------------------------------: | :------------------------------------: |
-| <b>Deterministic runtime</b> | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   | <span style="color: orange;">⚠️</span> |
-| <b>Replay & audit</b>        | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
-| <b>Memory tiers</b>          | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
-| <b>Policy enforcement</b>    | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   | <span style="color: orange;">⚠️</span> |
-| <b>CLI-first UX</b>          | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   |  <span style="color: red;">❌</span>   |
+| Feature                        |             PromptScript              |            Visual Builders             |         Iterative Loop Runners         |
+| ------------------------------ | :-----------------------------------: | :------------------------------------: | :------------------------------------: |
+| <b>Deterministic runtime</b>   | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   |  <span style="color: red;">❌</span>   |
+| <b>Replay & audit</b>          | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
+| <b>Memory tiers</b>            | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> | <span style="color: orange;">⚠️</span> |
+| <b>Explicit policies</b>       | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   |  <span style="color: red;">❌</span>   |
+| <b>Controlled side-effects</b> | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
+| <b>Composable workflows</b>    | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
+| <b>Human-like forgetting</b>   | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   |  <span style="color: red;">❌</span>   |
+| <b>CLI-first UX</b>            | <span style="color: green;">✅</span> |  <span style="color: red;">❌</span>   | <span style="color: orange;">⚠️</span> |
+| <b>Production suitability</b>  | <span style="color: green;">✅</span> | <span style="color: orange;">⚠️</span> |  <span style="color: red;">❌</span>   |
 
-> **PromptScript is designed for engineers, not just demos.**
+> **PromptScript is designed for engineers who need control, auditability, and reproducibility — not just repeated attempts.**
 
 </div>
+
+---
+
+## 🔍 What is an Iterative Loop Runner?
+
+<div align="center">
+
+### A system that repeatedly re-invokes an LLM on the same task until a stopping condition is met
+
+</div>
+
+**Typical characteristics:**
+
+- 🔄 **Implicit loop** - Retry until done
+- 📈 **Growing context** - Relies on accumulating outputs
+- 🧠 **No explicit memory model** - Context grows linearly
+- 🔁 **No replayable execution** - Cannot reproduce runs
+- 🛡️ **No policy enforcement** - Limited safety controls
+- 🔍 **Limited introspection** - Hard to debug failures
+
+**This approach can be useful for short-lived tasks, but breaks down when:**
+
+- ⏱️ Workflows grow long
+- 💰 Costs matter
+- 🔒 Safety is required
+- 📋 Auditing is mandatory
+
+---
+
+## 🧠 Why PromptScript Is Different
+
+PromptScript replaces implicit retry loops with:
+
+<table>
+<tr>
+<td width="50%">
+
+### 🎯 Explicit Plans
+
+Instead of "try again", PromptScript asks: **what exactly should happen next?**
+
+- Plans are validated before execution
+- Each step is explicit and auditable
+- No hidden retry logic
+
+</td>
+<td width="50%">
+
+### 🧠 Structured Memory
+
+- **STM/LTM architecture** - Clear memory model
+- **On-demand recall** - Load only what's needed
+- **Human-like forgetting** - Compact checkpoints
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🔧 Controlled Execution
+
+- Policy engine enforces safety
+- Sandboxing prevents escapes
+- Budgets prevent cost explosions
+
+</td>
+<td width="50%">
+
+### 🔁 Deterministic Replay
+
+- Full timeline of actions
+- Diffs per step
+- Reproducible runs
+
+</td>
+</tr>
+</table>
+
+---
+
+## ⚠️ Why Repeated Iteration Breaks at Scale
+
+<div align="center">
+
+### The Context Growth Problem
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Iterative Loop Approach                                │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  Loop 1: [Context: 1K tokens]                          │
+│    ↓                                                     │
+│  Loop 2: [Context: 1K + 2K = 3K tokens]                │
+│    ↓                                                     │
+│  Loop 3: [Context: 3K + 2K = 5K tokens]                │
+│    ↓                                                     │
+│  Loop N: [Context: N×2K tokens] → 💥 Cost explosion   │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  PromptScript Approach                                  │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  Plan → Execute → Log                                   │
+│    ↓                                                     │
+│  Memory: Checkpoint (compact)                           │
+│    ↓                                                     │
+│  Recall: Load only needed context                       │
+│    ↓                                                     │
+│  Forget: Compact to checkpoint                          │
+│    ↓                                                     │
+│  Result: Controlled context size → ✅ Predictable cost │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+</div>
+
+**The math:**
+
+- **Iterative loops**: Context grows as `O(n)` where `n` = number of iterations
+- **PromptScript**: Context stays bounded via checkpoints and forgetting
+
+**Real-world impact:**
+
+| Scenario           | Iterative Loop | PromptScript |
+| ------------------ | -------------- | ------------ |
+| **10 iterations**  | ~20K tokens    | ~5K tokens   |
+| **50 iterations**  | ~100K tokens   | ~8K tokens   |
+| **100 iterations** | ~200K tokens   | ~10K tokens  |
+
+> **💡 PromptScript's memory architecture prevents cost explosions at scale.**
+
+---
 
 ---
 
