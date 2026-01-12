@@ -15,6 +15,11 @@
 
 ---
 
+> ⚠️ **Note:** The organization and branding are temporary.  
+> PromptScript is under active development and may be renamed.
+
+---
+
 </div>
 
 ## 🎯 Why PromptScript?
