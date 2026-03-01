@@ -1,0 +1,9 @@
+node_modules
+bun.lock
+dist
+out
+.ps-runs
+.ps-memory
+coverage
+*.lcov
+*.tgz

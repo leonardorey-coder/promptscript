@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="es" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PromptScript - Deterministic Agent Workflows</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "sans-serif"],
+              mono: ['"Fira Code"', "monospace"],
+            },
+            colors: {
+              app: "#05050A",
+              surface: "#0A0A14",
+              surfaceHover: "#121222",
+              accent: {
+                blue: "#3b82f6",
+                purple: "#8b5cf6",
+                lightPurple: "#c084fc",
+                lightBlue: "#60a5fa",
+              },
+            },
+            animation: {
+              float: "float 6s ease-in-out infinite",
+              "glow-pulse": "glow-pulse 10s ease-in-out infinite alternate",
+              "fade-in-up":
+                "fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+            },
+            keyframes: {
+              float: {
+                "0%, 100%": {
+                  transform: "translateY(0px) rotateX(5deg) scale(0.95)",
+                },
+                "50%": {
+                  transform: "translateY(-15px) rotateX(5deg) scale(0.95)",
+                },
+              },
+              "glow-pulse": {
+                "0%": {
+                  transform: "translateX(-50%) scale(1)",
+                  opacity: "0.8",
+                },
+                "100%": {
+                  transform: "translateX(-50%) scale(1.1)",
+                  opacity: "1",
+                },
+              },
+              fadeInUp: {
+                "0%": { opacity: "0", transform: "translateY(30px)" },
+                "100%": { opacity: "1", transform: "translateY(0)" },
+              },
+            },
+            boxShadow: {
+              glow: "0 4px 20px rgba(139, 92, 246, 0.4)",
+              "glow-hover": "0 8px 30px rgba(139, 92, 246, 0.6)",
+              terminal:
+                "0 30px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(139, 92, 246, 0.2)",
+              "terminal-hover":
+                "0 40px 80px rgba(0, 0, 0, 0.8), 0 0 60px rgba(139, 92, 246, 0.3)",
+              "card-hover":
+                "0 20px 40px rgba(0,0,0,0.4), 0 0 20px rgba(139, 92, 246, 0.1)",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Base styles and utilities not easily achievable purely with Tailwind classes */
+      body {
+        background-color: #05050a; /* app bg */
+        color: #ffffff;
+        overflow-x: hidden;
+      }
+
+      .gradient-text {
+        background: linear-gradient(135deg, #60a5fa, #c084fc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .gradient-bg {
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      }
+
+      /* Scroll Reveal Animation Classes */
+      .reveal {
+        opacity: 0;
+        transform: translateY(30px);
+        transition:
+          opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+          transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .reveal.active {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* Glow Background Element */
+      .ambient-glow {
+        position: absolute;
+        top: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80vw;
+        height: 80vh;
+        background: radial-gradient(
+          circle,
+          rgba(139, 92, 246, 0.15) 0%,
+          rgba(59, 130, 246, 0.05) 40%,
+          transparent 70%
+        );
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      /* Hover effects for terminal and cards */
+      .terminal-group:hover .terminal-window {
+        transform: rotateX(0deg) scale(1) !important;
+        animation: none; /* pause floating on hover */
+      }
+
+      /* Underline animation for nav links */
+      .nav-link::after {
+        content: "";
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -4px;
+        left: 0;
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        transition: width 0.3s ease;
+      }
+      .nav-link:hover::after {
+        width: 100%;
+      }
+
+      /* Use Cases Cards specific light effect */
+      .use-case-card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(
+          circle at top right,
+          rgba(139, 92, 246, 0.1),
+          transparent 50%
+        );
+        opacity: 0;
+        transition: opacity 0.4s ease;
+      }
+      .use-case-card:hover::after {
+        opacity: 1;
+      }
+
+      /* Number outline styling */
+      .outline-text {
+        color: transparent;
+        -webkit-text-stroke: 1px rgba(139, 92, 246, 0.5);
+      }
+    </style>
+  </head>
+  <body
+    class="font-sans antialiased text-white selection:bg-accent-purple/30 selection:text-white"
+  >
+    <div class="ambient-glow animate-glow-pulse"></div>
+
+    <!-- Header -->
+    <header
+      id="navbar"
+      class="fixed top-0 left-0 w-full z-50 bg-[#05050a]/70 backdrop-blur-md border-b border-white/5 py-4 transition-all duration-300"
+    >
+      <div
+        class="container mx-auto px-6 max-w-7xl flex justify-between items-center relative z-10"
+      >
+        <div
+          class="flex items-center gap-3 font-extrabold text-xl tracking-tight"
+        >
+          <i data-lucide="terminal-square" class="text-accent-lightPurple"></i>
+          <span>PromptScript</span>
+        </div>
+
+        <nav class="hidden md:flex gap-10">
+          <a
+            href="#que-es"
+            class="nav-link relative text-gray-400 font-medium text-sm hover:text-white transition-colors"
+            >Qué es</a
+          >
+          <a
+            href="#casos-de-uso"
+            class="nav-link relative text-gray-400 font-medium text-sm hover:text-white transition-colors"
+            >Casos de Uso</a
+          >
+          <a
+            href="#requisitos"
+            class="nav-link relative text-gray-400 font-medium text-sm hover:text-white transition-colors"
+            >Características</a
+          >
+          <a
+            href="#extension-vscode"
+            class="nav-link relative text-gray-400 font-medium text-sm hover:text-white transition-colors"
+            >VS Code</a
+          >
+          <a
+            href="#instalacion"
+            class="nav-link relative text-gray-400 font-medium text-sm hover:text-white transition-colors"
+            >Instalación</a
+          >
+        </nav>
+
+        <div class="flex">
+          <a
+            href="https://github.com/leonardorey-coder/prompts-lang"
+            target="_blank"
+            class="flex items-center gap-2 text-sm px-4 py-2 bg-surface text-gray-300 border border-white/5 rounded-lg hover:bg-surfaceHover hover:text-white transition-colors"
+          >
+            <i data-lucide="github" class="w-4 h-4"></i>
+            Leonardo Cruz
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- 1. Hero -->
+    <section
+      class="pt-40 pb-24 text-center flex flex-col items-center relative z-10 overflow-hidden"
+    >
+      <!-- Background Video -->
+      <video
+        autoplay
+        loop
+        muted
+        playsinline
+        class="absolute inset-0 w-full h-full object-cover z-0 opacity-40 select-none pointer-events-none"
+      >
+        <source src="Software_continuity_and_development_20ede3b648.mp4" type="video/mp4" />
+      </video>
+      <!-- Gradient Overlay to blend with background -->
+      <div class="absolute inset-0 bg-gradient-to-b from-[#05050A]/60 via-[#05050A]/80 to-[#05050A] z-0 pointer-events-none"></div>
+
+      <div class="container mx-auto px-6 max-w-4xl relative z-10">
+        <div
+          class="inline-flex items-center gap-2 px-4 py-1.5 bg-accent-purple/10 text-accent-lightPurple border border-accent-purple/30 rounded-full text-sm font-semibold mb-8 opacity-0 animate-fade-in-up"
+          style="animation-delay: 0.1s"
+        >
+          <i data-lucide="sparkles" class="w-4 h-4"></i> v0.45.0 Ya disponible
+        </div>
+
+        <h1
+          class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 opacity-0 animate-fade-in-up"
+          style="animation-delay: 0.2s"
+        >
+          Flujos de trabajo de agentes, <br class="hidden md:block" /><span
+            class="gradient-text"
+            >escritos como código.</span
+          >
+        </h1>
+
+        <p
+          class="text-xl text-gray-400 max-w-3xl mx-auto mb-10 opacity-0 animate-fade-in-up"
+          style="animation-delay: 0.3s"
+        >
+          Construye y orquesta operaciones complejas con LLMs de forma duradera,
+          auditable y segura. Dile adiós a los chats impredecibles y abraza los
+          flujos deterministas.
+        </p>
+
+        <div
+          class="flex flex-col sm:flex-row justify-center gap-4 mb-20 opacity-0 animate-fade-in-up"
+          style="animation-delay: 0.4s"
+        >
+          <a
+            href="#instalacion"
+            class="flex items-center justify-center gap-2 px-8 py-3.5 rounded-full font-semibold text-white gradient-bg shadow-glow hover:shadow-glow-hover hover:-translate-y-0.5 transition-all duration-300"
+          >
+            Empezar ahora
+            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+          </a>
+          <a
+            href="https://github.com/leonardorey-coder/prompts-lang"
+            target="_blank"
+            class="flex items-center justify-center gap-2 px-8 py-3.5 rounded-full font-semibold text-white bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-300"
+          >
+            <i data-lucide="star" class="w-5 h-5"></i>
+            Danos una estrella
+          </a>
+        </div>
+
+        <div
+          class="terminal-group [perspective:1000px] opacity-0 animate-fade-in-up"
+          style="animation-delay: 0.5s"
+        >
+          <div
+            class="terminal-window mx-auto max-w-3xl bg-[#0a0a14]/70 backdrop-blur-xl border border-white/10 rounded-2xl text-left overflow-hidden shadow-terminal transition-all duration-500 hover:shadow-terminal-hover animate-float origin-center"
+          >
+            <div
+              class="bg-black/50 px-5 py-3.5 flex items-center border-b border-white/5"
+            >
+              <div class="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+              <div class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+              <div class="w-3 h-3 rounded-full bg-green-500 mr-4"></div>
+              <span class="text-gray-400 text-sm font-mono"
+                >landing_build.ps</span
+              >
+            </div>
+            <div
+              class="p-8 text-gray-200 text-sm md:text-base font-mono leading-relaxed overflow-x-auto"
+            >
+              <pre><code><span class="text-[#c084fc] font-medium">log</span>(<span class="text-[#86efac]">"Iniciando build de landing page"</span>)
+<span class="text-gray-500 italic"># Ejecuta flujo determinista</span>
+<span class="text-[#c084fc] font-medium">result</span> = <span class="text-[#60a5fa]">call</span>(<span class="text-[#86efac]">"workflows/build.ps"</span>, {
+  stage: <span class="text-[#86efac]">"build"</span>,
+  budget_override: { maxLLMCalls: <span class="text-[#fdfba8]">20</span> }
+})
+
+<span class="text-[#c084fc] font-medium">if</span> result.contract.ok:
+  <span class="text-[#c084fc] font-medium">log</span>(<span class="text-[#86efac]">"✓ Build completado, procediendo a verificación."</span>)</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Qué es -->
+    <section
+      id="que-es"
+      class="py-32 bg-surface border-y border-white/5 relative z-10"
+    >
+      <div class="container mx-auto px-6 max-w-6xl">
+        <div class="text-center mb-20 reveal">
+          <h2
+            class="text-4xl md:text-5xl font-extrabold tracking-tight inline-block gradient-text mb-4"
+          >
+            ¿Qué es PromptScript?
+          </h2>
+          <p class="text-xl text-gray-400">
+            El estándar de facto para el runtime de LLMs en producción.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-20 items-center">
+          <div class="reveal transition-delay-100">
+            <p class="text-lg text-gray-300 mb-10 leading-relaxed">
+              PromptScript es un lenguaje de programación
+              <strong class="text-white">code-first</strong> y un entorno de
+              ejecución diseñado específicamente para construir flujos de
+              trabajo con LLMs. Evita la principal falla de las herramientas
+              actuales: el bucle iterativo sin límites.
+            </p>
+            <ul class="space-y-5">
+              <li
+                class="flex items-start gap-4 p-4 bg-white/5 border border-white/5 rounded-xl transition-all hover:-translate-y-1 hover:bg-white/10 hover:border-white/10"
+              >
+                <i
+                  data-lucide="check-circle-2"
+                  class="text-accent-lightPurple shrink-0 w-6 h-6 mt-0.5"
+                ></i>
+                <div>
+                  <strong class="block text-white mb-1"
+                    >Determinismo Total</strong
+                  >
+                  <p class="text-sm text-gray-400">
+                    Planes explícitos antes de gastar recursos. Nada de
+                    comportamiento "caja negra".
+                  </p>
+                </div>
+              </li>
+              <li
+                class="flex items-start gap-4 p-4 bg-white/5 border border-white/5 rounded-xl transition-all hover:-translate-y-1 hover:bg-white/10 hover:border-white/10"
+              >
+                <i
+                  data-lucide="zap"
+                  class="text-accent-lightPurple shrink-0 w-6 h-6 mt-0.5"
+                ></i>
+                <div>
+                  <strong class="block text-white mb-1"
+                    >Alta Eficiencia & Memoria</strong
+                  >
+                  <p class="text-sm text-gray-400">
+                    Reduce tiempo de ejecución y costos. Su arquitectura
+                    Short-term y Long-term memory previene la inflación de
+                    tokens al releer.
+                  </p>
+                </div>
+              </li>
+              <li
+                class="flex items-start gap-4 p-4 bg-white/5 border border-white/5 rounded-xl transition-all hover:-translate-y-1 hover:bg-white/10 hover:border-white/10"
+              >
+                <i
+                  data-lucide="shield-check"
+                  class="text-accent-lightPurple shrink-0 w-6 h-6 mt-0.5"
+                ></i>
+                <div>
+                  <strong class="block text-white mb-1"
+                    >Ejecución Segura</strong
+                  >
+                  <p class="text-sm text-gray-400">
+                    Validación estricta y sandboxing. El LLM jamás hace bypass
+                    de las políticas impuestas.
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="flex flex-col gap-10 reveal transition-delay-200">
+            <div
+              class="flex items-center gap-6 p-8 bg-gradient-to-b from-gray-900/80 to-[#0a0a14]/80 border border-white/5 rounded-2xl relative overflow-hidden"
+            >
+              <div
+                class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-accent-purple/50 to-transparent"
+              ></div>
+              <div
+                class="w-16 h-16 shrink-0 bg-accent-purple/10 rounded-full flex items-center justify-center text-accent-lightPurple border border-accent-purple/20"
+              >
+                <i data-lucide="trending-down" class="w-8 h-8"></i>
+              </div>
+              <div>
+                <h4 class="text-4xl font-bold gradient-text mb-1">40%</h4>
+                <span class="text-gray-400"
+                  >Ahorro promedio en uso de tokens</span
+                >
+              </div>
+            </div>
+
+            <div
+              class="flex items-center gap-6 p-8 bg-gradient-to-b from-gray-900/80 to-[#0a0a14]/80 border border-white/5 rounded-2xl relative overflow-hidden"
+            >
+              <div
+                class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-accent-purple/50 to-transparent"
+              ></div>
+              <div
+                class="w-16 h-16 shrink-0 bg-accent-purple/10 rounded-full flex items-center justify-center text-accent-lightPurple border border-accent-purple/20"
+              >
+                <i data-lucide="lock" class="w-8 h-8"></i>
+              </div>
+              <div>
+                <h4 class="text-4xl font-bold gradient-text mb-1">100%</h4>
+                <span class="text-gray-400"
+                  >Aislamiento y control de comandos</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Casos de Uso -->
+    <section id="casos-de-uso" class="py-32 relative z-10 overflow-hidden">
+      <div
+        class="absolute right-0 top-1/4 w-[500px] h-[500px] bg-accent-blue/10 rounded-full blur-[120px] pointer-events-none"
+      ></div>
+      <div class="container mx-auto px-6 max-w-6xl">
+        <div class="flex flex-col lg:flex-row gap-16 items-center mb-20 reveal">
+          <div class="lg:w-1/2">
+            <h2
+              class="text-4xl md:text-5xl font-extrabold tracking-tight inline-block gradient-text mb-4"
+            >
+              Casos de Uso Ideales
+            </h2>
+            <p class="text-xl text-gray-400">
+              Diseñado para operaciones estructurales profundas y workflows
+              duraderos.
+            </p>
+          </div>
+
+          <div class="lg:w-1/2 w-full terminal-group [perspective:1000px]">
+            <!-- Terminal estilo macOS flotante -->
+            <div
+              class="terminal-window w-full bg-[#0a0a14]/80 backdrop-blur-xl border border-white/10 rounded-xl text-left overflow-hidden shadow-terminal transition-all duration-500 hover:shadow-terminal-hover animate-float origin-center"
+              style="animation-delay: -3s"
+            >
+              <div
+                class="bg-gradient-to-b from-white/10 to-transparent px-4 py-3 flex items-center border-b border-white/5 relative"
+              >
+                <div class="flex gap-2 absolute left-4">
+                  <div
+                    class="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]"
+                  ></div>
+                  <div
+                    class="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]"
+                  ></div>
+                  <div
+                    class="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]"
+                  ></div>
+                </div>
+                <span
+                  class="text-gray-400 text-xs font-mono font-medium mx-auto"
+                  >audit_v2.ps</span
+                >
+              </div>
+              <div
+                class="p-6 text-gray-300 text-sm font-mono leading-relaxed overflow-x-auto min-h-[200px]"
+              >
+                <pre><code><span class="text-gray-500 italic"># Ejecuta un caso de uso estructural</span>
+<span class="text-[#c084fc] font-medium">project</span> = <span class="text-[#60a5fa] font-medium">ast_parse</span>(<span class="text-[#86efac]">"./src"</span>)
+
+<span class="text-[#c084fc] font-medium">with policy</span>(Timeout=300s):
+  <span class="text-[#c084fc] font-medium">for</span> node <span class="text-[#c084fc] font-medium">in</span> project:
+    <span class="text-[#c084fc] font-medium">if</span> <span class="text-[#60a5fa] font-medium">has_vulnerability</span>(node):
+      <span class="text-[#60a5fa] font-medium">patch_file</span>({
+        target: node.file,
+        diff: <span class="text-[#60a5fa] font-medium">generate_fix</span>(node)
+      })</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Card 1 -->
+          <div
+            class="use-case-card relative overflow-hidden bg-gradient-to-b from-gray-900/60 to-[#0a0a14]/60 border border-white/5 rounded-2xl p-10 transition-all duration-300 hover:-translate-y-2 hover:border-accent-purple/30 hover:shadow-card-hover reveal transition-delay-100"
+          >
+            <div
+              class="w-12 h-12 text-accent-lightPurple mb-6 bg-accent-purple/10 p-3 rounded-xl"
+            >
+              <i data-lucide="git-merge" class="w-full h-full"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-3">Automatización CI/CD</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+              Flujos de trabajo guiados por agentes con quality gates y repair
+              loops. Orquesta Build, Test, Fix y Verificación sin intervención
+              visual.
+            </p>
+          </div>
+          <!-- Card 2 -->
+          <div
+            class="use-case-card relative overflow-hidden bg-gradient-to-b from-gray-900/60 to-[#0a0a14]/60 border border-white/5 rounded-2xl p-10 transition-all duration-300 hover:-translate-y-2 hover:border-accent-purple/30 hover:shadow-card-hover reveal transition-delay-200"
+          >
+            <div
+              class="w-12 h-12 text-accent-lightPurple mb-6 bg-accent-purple/10 p-3 rounded-xl"
+            >
+              <i data-lucide="layout-template" class="w-full h-full"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-3">Generación SW Complejo y QA</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+              Generación automatizada de software completo seguida de una exhaustiva batería de chequeos deterministas.
+            </p>
+          </div>
+          <!-- Card 3 -->
+          <div
+            class="use-case-card relative overflow-hidden bg-gradient-to-b from-gray-900/60 to-[#0a0a14]/60 border border-white/5 rounded-2xl p-10 transition-all duration-300 hover:-translate-y-2 hover:border-accent-purple/30 hover:shadow-card-hover reveal transition-delay-300"
+          >
+            <div
+              class="w-12 h-12 text-accent-lightPurple mb-6 bg-accent-purple/10 p-3 rounded-xl"
+            >
+              <i data-lucide="copy-check" class="w-full h-full"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-3">Replicaciones de SW</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+              Agentes siguen workflows preparados para crear software complejo a
+              partir de instrucciones preestablecidas, recreando el resultado
+              fielmente.
+            </p>
+          </div>
+          <!-- Card 4 -->
+          <div
+            class="use-case-card relative overflow-hidden bg-gradient-to-b from-gray-900/60 to-[#0a0a14]/60 border border-white/5 rounded-2xl p-10 transition-all duration-300 hover:-translate-y-2 hover:border-accent-purple/30 hover:shadow-card-hover reveal transition-delay-100"
+          >
+            <div
+              class="w-12 h-12 text-accent-lightPurple mb-6 bg-accent-purple/10 p-3 rounded-xl"
+            >
+              <i data-lucide="file-search" class="w-full h-full"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-3">Auditar Software</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+              Mantenimiento avanzado. Planea, revisa, y soluciona problemas en
+              software complejo recorriendo el AST determinísticamente.
+            </p>
+          </div>
+          <!-- Card 5 -->
+          <div
+            class="use-case-card relative overflow-hidden bg-gradient-to-b from-gray-900/60 to-[#0a0a14]/60 border border-white/5 rounded-2xl p-10 transition-all duration-300 hover:-translate-y-2 hover:border-accent-purple/30 hover:shadow-card-hover reveal transition-delay-200"
+          >
+            <div
+              class="w-12 h-12 text-accent-lightPurple mb-6 bg-accent-purple/10 p-3 rounded-xl"
+            >
+              <i data-lucide="folder-tree" class="w-full h-full"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-3">Migraciones Complejas</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+              Actualización masiva de código auditable y seguro. Paso a paso
+              para no perder el contexto ni desbordar la memoria temporal.
+            </p>
+          </div>
+          <!-- Card 6 -->
+          <div
+            class="use-case-card relative overflow-hidden bg-gradient-to-b from-gray-900/60 to-[#0a0a14]/60 border border-white/5 rounded-2xl p-10 transition-all duration-300 hover:-translate-y-2 hover:border-accent-purple/30 hover:shadow-card-hover reveal transition-delay-300"
+          >
+            <div
+              class="w-12 h-12 text-accent-lightPurple mb-6 bg-accent-purple/10 p-3 rounded-xl"
+            >
+              <i data-lucide="library" class="w-full h-full"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-3">Documetación Profunda</h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+              Los agentes leen el código a profundidad apoyándose del LTM.
+              Eliminando los límites de retención que ahogan a los LLMs
+              tradicionales.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Requisitos / Funcionalidades -->
+    <section
+      id="requisitos"
+      class="py-32 bg-surface border-y border-white/5 relative z-10"
+    >
+      <div class="container mx-auto px-6 max-w-4xl">
+        <div class="text-center mb-20 reveal">
+          <h2
+            class="text-4xl md:text-5xl font-extrabold tracking-tight inline-block gradient-text mb-4"
+          >
+            Requisitos Funcionales
+          </h2>
+          <p class="text-xl text-gray-400">
+            Arquitectura técnica de PromptScript para la era agentica.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-6">
+          <!-- Req 1 -->
+          <div
+            class="flex flex-col md:flex-row gap-6 md:gap-8 p-8 bg-app border border-white/5 rounded-2xl transition-colors hover:bg-white/[0.02] hover:border-white/10 reveal transition-delay-100"
+          >
+            <div
+              class="text-5xl font-extrabold outline-text font-mono leading-none shrink-0 border-b md:border-b-0 md:border-r border-white/10 pb-4 md:pb-0 md:pr-8 mx-auto md:mx-0"
+            >
+              01
+            </div>
+            <div>
+              <h4 class="text-xl font-bold text-white mb-2">
+                Ejecución Determinista y Validada
+              </h4>
+              <p class="text-gray-400 text-sm md:text-base leading-relaxed">
+                Los scripts <code>.ps</code> se ejecutan sincrónicamente
+                validando el JSON PlanSpec en todo momento. Cada acción del Plan
+                es escrutada impidiendo que el LLM ejecute comandos arbitrarios
+                sin permiso.
+              </p>
+            </div>
+          </div>
+          <!-- Req 2 -->
+          <div
+            class="flex flex-col md:flex-row gap-6 md:gap-8 p-8 bg-app border border-white/5 rounded-2xl transition-colors hover:bg-white/[0.02] hover:border-white/10 reveal transition-delay-200"
+          >
+            <div
+              class="text-5xl font-extrabold outline-text font-mono leading-none shrink-0 border-b md:border-b-0 md:border-r border-white/10 pb-4 md:pb-0 md:pr-8 mx-auto md:mx-0"
+            >
+              02
+            </div>
+            <div>
+              <h4 class="text-xl font-bold text-white mb-2">
+                Fronteras de Presupuesto (Budgets)
+              </h4>
+              <p class="text-gray-400 text-sm md:text-base leading-relaxed">
+                Detén los sobrecostos asignando presupuestos por etapa (USD
+                máximo, Tokens, Llamadas LLM) haciendo que el pipeline devuelva
+                falla inmediata antes de que se produzca un cargo sorpresivo.
+              </p>
+            </div>
+          </div>
+          <!-- Req 3 -->
+          <div
+            class="flex flex-col md:flex-row gap-6 md:gap-8 p-8 bg-app border border-white/5 rounded-2xl transition-colors hover:bg-white/[0.02] hover:border-white/10 reveal transition-delay-300"
+          >
+            <div
+              class="text-5xl font-extrabold outline-text font-mono leading-none shrink-0 border-b md:border-b-0 md:border-r border-white/10 pb-4 md:pb-0 md:pr-8 mx-auto md:mx-0"
+            >
+              03
+            </div>
+            <div>
+              <h4 class="text-xl font-bold text-white mb-2">
+                Jerarquía de Sub-Workflows
+              </h4>
+              <p class="text-gray-400 text-sm md:text-base leading-relaxed">
+                Invoca y compone pipelines encapsulados. Comparte memoria
+                parcial a través de la llave de sesión o limpia el entorno
+                completamente (forgets) para un contexto limpio en cada paso de
+                validación.
+              </p>
+            </div>
+          </div>
+          <!-- Req 4 -->
+          <div
+            class="flex flex-col md:flex-row gap-6 md:gap-8 p-8 bg-app border border-white/5 rounded-2xl transition-colors hover:bg-white/[0.02] hover:border-white/10 reveal transition-delay-400"
+          >
+            <div
+              class="text-5xl font-extrabold outline-text font-mono leading-none shrink-0 border-b md:border-b-0 md:border-r border-white/10 pb-4 md:pb-0 md:pr-8 mx-auto md:mx-0"
+            >
+              04
+            </div>
+            <div>
+              <h4 class="text-xl font-bold text-white mb-2">
+                Observabilidad Time Machine
+              </h4>
+              <p class="text-gray-400 text-sm md:text-base leading-relaxed">
+                Trazabilidad militar garantizada. Generación inmutable de
+                <code>events.jsonl</code> para reproducir cada paso mediante CLI
+                con <code>psc replay</code>, evidenciando diffs sin pérdida
+                historica.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4.1 Extensión de VS Code (NUEVO) -->
+    <section
+      id="extension-vscode"
+      class="py-32 relative z-10 border-t border-white/5 overflow-hidden"
+    >
+      <div
+        class="absolute left-0 top-1/2 w-[600px] h-[600px] bg-accent-purple/10 rounded-full blur-[150px] pointer-events-none -translate-y-1/2"
+      ></div>
+      <div class="container mx-auto px-6 max-w-6xl">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div
+            class="order-2 lg:order-1 relative reveal fade-in-up"
+            style="animation-delay: 0.2s"
+          >
+            <!-- Simulador de VS Code Interface -->
+            <div
+              class="bg-[#1e1e1e] rounded-xl border border-white/10 shadow-2xl overflow-hidden transform transition-all duration-500 hover:scale-[1.02] hover:shadow-accent-purple/20"
+            >
+              <div
+                class="bg-[#323233] px-4 py-2 flex items-center justify-between border-b border-black"
+              >
+                <div class="flex gap-1.5">
+                  <span class="w-3 h-3 rounded-full bg-[#FF5F56]"></span>
+                  <span class="w-3 h-3 rounded-full bg-[#FFBD2E]"></span>
+                  <span class="w-3 h-3 rounded-full bg-[#27C93F]"></span>
+                </div>
+                <span class="text-[#cccccc] text-xs font-sans"
+                  >agent.ps - Visual Studio Code</span
+                >
+                <div class="w-12"></div>
+              </div>
+              <div class="flex h-[350px]">
+                <!-- Sidebar -->
+                <div
+                  class="w-14bg-[#333333] border-r border-[#252526] p-3 flex flex-col gap-4 items-center"
+                >
+                  <i data-lucide="files" class="text-white/80 w-5 h-5"></i>
+                  <i data-lucide="search" class="text-white/40 w-5 h-5"></i>
+                  <i data-lucide="git-branch" class="text-white/40 w-5 h-5"></i>
+                  <i
+                    data-lucide="blocks"
+                    class="text-accent-lightPurple w-5 h-5 shadow-glow"
+                  ></i>
+                </div>
+                <!-- Editor Area -->
+                <div
+                  class="flex-1 bg-[#1e1e1e] p-6 font-mono text-sm overflow-hidden relative"
+                >
+                  <div class="text-[#ce9178] mb-1">
+                    <span class="text-[#c586c0]">with</span> policy(...)
+                  </div>
+                  <div class="ml-4 text-[#dcdcaa]">plan(</div>
+                  <div class="ml-8 text-[#9cdcfe]">
+                    action: <span class="text-[#ce9178]">"READ_FILE"</span>,
+                  </div>
+
+                  <!-- Tooltip / Autocomplete Fake -->
+                  <div
+                    class="absolute top-[80px] left-[120px] bg-[#252526] border border-[#454545] rounded shadow-lg p-2 w-[240px] z-10 animate-fade-in-up"
+                  >
+                    <div
+                      class="flex items-center gap-2 border-b border-[#454545] pb-2 mb-2"
+                    >
+                      <i data-lucide="box" class="w-4 h-4 text-[#c586c0]"></i>
+                      <span class="text-[#dcdcaa] text-xs font-bold"
+                        >READ_FILE</span
+                      >
+                    </div>
+                    <p
+                      class="text-[#cccccc] text-[11px] leading-relaxed font-sans mb-1"
+                    >
+                      Permite al LLM leer el contenido de un archivo en el
+                      workspace con límites LTM configurados.
+                    </p>
+                  </div>
+
+                  <div class="ml-8 text-[#9cdcfe]">
+                    target: <span class="text-[#ce9178]">"./README.md"</span>
+                  </div>
+                  <div class="ml-4 text-[#dcdcaa]">)</div>
+                </div>
+              </div>
+              <!-- Status bar -->
+              <div
+                class="bg-[#007acc] px-4 py-1 text-white text-xs flex justify-between items-center"
+              >
+                <div class="flex gap-4">
+                  <span class="flex items-center gap-1"
+                    ><i data-lucide="x-circle" class="w-3 h-3"></i> 0</span
+                  >
+                  <span class="flex items-center gap-1"
+                    ><i data-lucide="alert-triangle" class="w-3 h-3"></i>
+                    0</span
+                  >
+                </div>
+                <div class="flex gap-4 items-center">
+                  <span>PromptScript</span>
+                  <span>UTF-8</span>
+                  <span class="flex items-center gap-1"
+                    ><i data-lucide="check-check" class="w-3 h-3"></i>
+                    Validated</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="order-1 lg:order-2 reveal fade-in-up">
+            <div
+              class="inline-flex items-center gap-2 px-4 py-1.5 bg-accent-blue/10 text-accent-lightBlue border border-accent-blue/30 rounded-full text-sm font-semibold mb-6"
+            >
+              <i data-lucide="blocks" class="w-4 h-4"></i> Próximamente en VS
+              Code
+            </div>
+            <h2
+              class="text-4xl md:text-5xl font-extrabold tracking-tight mb-6 mt-2"
+            >
+              Experiencia de <br />
+              <span class="gradient-text">Máxima Productividad</span>
+            </h2>
+            <p class="text-lg text-gray-400 mb-8 leading-relaxed">
+              Desarrollar PromptScript será natural. Estamos construyendo una
+              extensión oficial con un
+              <strong>Language Server (LSP)</strong> integrado para otorgar
+              superpoderes a tu flujo de trabajo en VS Code.
+            </p>
+
+            <ul class="space-y-4">
+              <li class="flex items-center gap-3 text-gray-300">
+                <i
+                  data-lucide="zap"
+                  class="text-accent-lightBlue w-5 h-5 shrink-0"
+                ></i>
+                <span>Autocompletado de funciones built-in y acciones LLM</span>
+              </li>
+              <li class="flex items-center gap-3 text-gray-300">
+                <i
+                  data-lucide="shield-alert"
+                  class="text-accent-lightBlue w-5 h-5 shrink-0"
+                ></i>
+                <span
+                  >Validación de Semántica y Errores (Diagnostics) en tiempo
+                  real</span
+                >
+              </li>
+              <li class="flex items-center gap-3 text-gray-300">
+                <i
+                  data-lucide="book-open"
+                  class="text-accent-lightBlue w-5 h-5 shrink-0"
+                ></i>
+                <span
+                  >Documentación en tooltips (Hover documentation) directa de la
+                  DSL</span
+                >
+              </li>
+              <li class="flex items-center gap-3 text-gray-300">
+                <i
+                  data-lucide="terminal-square"
+                  class="text-accent-lightBlue w-5 h-5 shrink-0"
+                ></i>
+                <span
+                  >Panel de salida estructurado y consola de ejecución (<code
+                    >psc run</code
+                  >) integrada</span
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Instalación -->
+    <section id="instalacion" class="py-32 relative z-10">
+      <div class="container mx-auto px-6 max-w-3xl reveal">
+        <div class="text-center mb-16">
+          <h2
+            class="text-4xl md:text-5xl font-extrabold tracking-tight inline-block gradient-text mb-4"
+          >
+            ¿Listo para integrar PromptScript?
+          </h2>
+          <p class="text-xl text-gray-400">
+            Instalación nativa con Bun. Máximo poder, mínimo overhead.
+          </p>
+        </div>
+
+        <div
+          class="border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+        >
+          <div
+            class="flex justify-between items-center px-6 py-4 bg-white/5 border-b border-white/5"
+          >
+            <span class="text-sm font-mono text-gray-400">Terminal</span>
+            <button
+              class="text-gray-400 hover:text-white transition-colors flex items-center justify-center p-1"
+              id="copyBtn"
+            >
+              <i data-lucide="copy" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="bg-[#0d0d14] p-8 overflow-x-auto text-sm md:text-base">
+            <pre
+              id="codeBlock"
+              class="font-mono leading-relaxed"
+            ><code class="text-gray-300"><span class="text-gray-500 italic"># 1. Clona el repositorio nativo</span>
+git clone https://github.com/leonardorey-coder/prompts-lang
+<span class="text-[#60a5fa] font-medium">cd</span> prompts-lang
+
+<span class="text-gray-500 italic"># 2. Instala con el runtime más veloz: Bun</span>
+bun install
+
+<span class="text-gray-500 italic"># 3. Comienza a ejecutar tus workflows</span>
+bun run src/cli.ts run ejemplos/workflow.ps --project .
+</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Bottom CTA -->
+    <section
+      class="py-32 text-center border-t border-white/5 relative overflow-hidden"
+    >
+      <div
+        class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.1)_0%,transparent_70%)] pointer-events-none"
+      ></div>
+      <div class="container mx-auto px-6 relative z-10 reveal">
+        <h2 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">
+          Únete a la nueva era de workflows de agentes
+        </h2>
+        <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
+          Apóyanos dejando una estrella y empieza a construir flujos de trabajo
+          predecibles hoy mismo.
+        </p>
+        <a
+          href="https://github.com/leonardorey-coder/prompts-lang"
+          target="_blank"
+          class="inline-flex items-center justify-center gap-3 px-10 py-5 rounded-full font-bold text-gray-900 bg-white hover:bg-gray-100 hover:-translate-y-1 transition-all duration-300 shadow-xl text-lg"
+        >
+          <i data-lucide="github" class="w-6 h-6"></i>
+          Star on GitHub
+        </a>
+        <p class="text-sm text-gray-500 mt-8 opacity-70">
+          v0.45 Libre & Open Source (Apache 2.0)
+        </p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer
+      class="border-t border-white/5 pt-20 pb-10 relative z-10 bg-surface"
+    >
+      <div class="container mx-auto px-6 max-w-6xl">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+          <div class="md:col-span-2">
+            <div
+              class="flex items-center gap-2 font-extrabold text-xl text-white mb-4"
+            >
+              <i
+                data-lucide="terminal-square"
+                class="text-accent-lightPurple w-6 h-6"
+              ></i>
+              <span>PromptScript</span>
+            </div>
+            <p class="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
+              El estándar de facto para el runtime de LLMs en producción. Flujos
+              de trabajo de agentes deterministas, escritos como código y
+              diseñados para la escalabilidad.
+            </p>
+            <div class="flex items-center gap-4">
+              <a
+                href="https://github.com/leonardorey-coder/prompts-lang"
+                target="_blank"
+                class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
+              >
+                <i data-lucide="github" class="w-5 h-5"></i>
+              </a>
+              <a
+                href="https://twitter.com"
+                target="_blank"
+                class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
+              >
+                <i data-lucide="twitter" class="w-5 h-5"></i>
+              </a>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-white font-bold mb-6 tracking-wide">Producto</h4>
+            <ul class="space-y-4 text-sm text-gray-400">
+              <li>
+                <a
+                  href="#que-es"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Características</a
+                >
+              </li>
+              <li>
+                <a
+                  href="#casos-de-uso"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Casos de Uso</a
+                >
+              </li>
+              <li>
+                <a
+                  href="#requisitos"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Requisitos</a
+                >
+              </li>
+              <li>
+                <a
+                  href="#extension-vscode"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Extensión VS Code</a
+                >
+              </li>
+              <li>
+                <a
+                  href="#instalacion"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Instalación</a
+                >
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="text-white font-bold mb-6 tracking-wide">Recursos</h4>
+            <ul class="space-y-4 text-sm text-gray-400">
+              <li>
+                <a
+                  href="https://github.com/leonardorey-coder/prompts-lang"
+                  target="_blank"
+                  class="hover:text-accent-lightPurple transition-colors inline-flex items-center gap-2"
+                  >Documentación
+                  <i data-lucide="external-link" class="w-3 h-3"></i
+                ></a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/leonardorey-coder/prompts-lang/issues"
+                  target="_blank"
+                  class="hover:text-accent-lightPurple transition-colors inline-flex items-center gap-2"
+                  >Reportar Error
+                  <i data-lucide="external-link" class="w-3 h-3"></i
+                ></a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/leonardorey-coder/prompts-lang/blob/main/CHANGELOG-v045.md"
+                  target="_blank"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Changelog</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/leonardorey-coder/prompts-lang/blob/main/LICENSE"
+                  target="_blank"
+                  class="hover:text-accent-lightPurple transition-colors"
+                  >Licencia Apache 2.0</a
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          class="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-500 text-sm"
+        >
+          <div>© 2026 PromptScript Team. Todos los derechos reservados.</div>
+          <div class="flex items-center gap-6">
+            <span class="flex items-center gap-1.5"
+              ><i data-lucide="code" class="w-4 h-4 text-gray-600"></i>
+              Code-first</span
+            >
+            <span class="flex items-center gap-1.5"
+              ><i data-lucide="cpu" class="w-4 h-4 text-gray-600"></i> High
+              Performance</span
+            >
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Init Lucide Icons
+      lucide.createIcons();
+
+      // Reveal Animations on Scroll
+      const observerOptions = {
+        root: null,
+        rootMargin: "0px",
+        threshold: 0.15,
+      };
+
+      const observer = new IntersectionObserver((entries, observer) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("active");
+            observer.unobserve(entry.target);
+          }
+        });
+      }, observerOptions);
+
+      document.querySelectorAll(".reveal").forEach((element) => {
+        observer.observe(element);
+      });
+
+      // Copy button functionality
+      document.getElementById("copyBtn").addEventListener("click", function () {
+        const code = document.getElementById("codeBlock").innerText;
+        navigator.clipboard.writeText(code);
+        const icon = this.querySelector("i");
+        icon.setAttribute("data-lucide", "check");
+        icon.classList.add("text-green-400");
+        lucide.createIcons();
+
+        setTimeout(() => {
+          icon.setAttribute("data-lucide", "copy");
+          icon.classList.remove("text-green-400");
+          lucide.createIcons();
+        }, 2000);
+      });
+
+      // Navbar blur and shadow effect on scroll
+      window.addEventListener("scroll", () => {
+        const nav = document.getElementById("navbar");
+        if (window.scrollY > 50) {
+          nav.classList.add("bg-[#05050a]/90", "shadow-2xl");
+          nav.classList.remove("bg-[#05050a]/70");
+        } else {
+          nav.classList.add("bg-[#05050a]/70");
+          nav.classList.remove("bg-[#05050a]/90", "shadow-2xl");
+        }
+      });
+    </script>
+  </body>
+</html>
