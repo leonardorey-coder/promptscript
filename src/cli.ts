@@ -10,6 +10,17 @@ import { configureLLM, type LLMProvider } from "./runtime/llm";
 import { markdownToPlanSpec } from "./compiler/md-to-planspec";
 import { planSpecToPromptScript } from "./compiler/planspec-to-ps";
 import { PlanSpecSchema } from "./runtime/planspec";
+import {
+  printBanner,
+  showMainMenu,
+  listWorkflows,
+  printWorkflowList,
+  createRenderer,
+  showPicker,
+  type TUIRenderer,
+  type PickerItem,
+} from "./tui";
+import { colorize, bold, dim } from "./tui/colors";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -37,6 +48,7 @@ Usage:
   psc compile-md <plan.md> --out <planspec.json>  Compile Markdown to PlanSpec
   psc compile-planspec <planspec.json> --out <workflow.ps>  Compile PlanSpec to PromptScript
   psc replay <runId>                              Show replay of a run
+  psc list                                        List available workflows
 
 Options:
   --project <dir>       Project root directory (default: cwd)
@@ -49,6 +61,7 @@ Options:
   --halt-on-loop        Stop execution when loop is detected
   --require-approval    Require manual approval for write operations
   --verbose             Enable verbose output
+  --tui                 Enable interactive TUI (banner, progress bars, spinners)
   --from-md             Treat input as Markdown plan (auto-compile)
   --out <file>          Output file path
 
@@ -63,6 +76,8 @@ Examples:
   psc compile-md demo/plan.md --out demo/planspec.json
   psc compile-planspec demo/planspec.json --out demo/workflow.ps
   psc replay 1234567890-abc123
+  psc list --project .
+  psc run examples/v045/landing_full.ps --project . --tui
 `);
 }
 
@@ -71,9 +86,23 @@ Examples:
 // ============================================================================
 
 async function main(): Promise<void> {
-  const cmd = Bun.argv[2];
+  const useTui = hasFlag("--tui");
 
-  if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
+  // Find the actual command (skip flags that start with --)
+  const cmd = Bun.argv.slice(2).find((arg) => !arg.startsWith("--"));
+
+  // Show banner only in TUI mode
+  if (useTui) {
+    printBanner("0.5.0");
+  }
+
+  // --tui without a subcommand → interactive menu loop
+  if (!cmd && useTui) {
+    await runTUIMode();
+    process.exit(0);
+  }
+
+  if (!cmd || cmd === "help") {
     printUsage();
     process.exit(0);
   }
@@ -90,6 +119,11 @@ async function main(): Promise<void> {
 
   if (cmd === "replay") {
     await handleReplay();
+    return;
+  }
+
+  if (cmd === "list") {
+    await handleListWorkflows();
     return;
   }
 
@@ -118,6 +152,12 @@ async function main(): Promise<void> {
   const haltOnLoop = hasFlag("--halt-on-loop");
   const verbose = hasFlag("--verbose");
   const fromMd = hasFlag("--from-md");
+
+  // Initialize TUI renderer if --tui is active
+  let tuiRenderer: TUIRenderer | null = null;
+  if (useTui) {
+    tuiRenderer = createRenderer();
+  }
 
   // Configure LLM
   if (provider || model) {
@@ -251,14 +291,273 @@ async function main(): Promise<void> {
 
   try {
     await vm.run(ast);
-    console.log(`\n[ps] Run complete. Logs: ${logger.dir}`);
-    console.log(`[ps] Budget: ${logger.budgetTracker.getSummary()}`);
+    if (useTui) {
+      tuiRenderer?.stop();
+    }
+    console.log(
+      `\n${colorize("[ps]", "blue")} Run complete. Logs: ${logger.dir}`
+    );
+    console.log(
+      `${colorize("[ps]", "blue")} Budget: ${logger.budgetTracker.getSummary()}`
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`\n[ps] Error: ${message}`);
-    console.error(`[ps] Logs: ${logger.dir}`);
+    if (useTui) {
+      tuiRenderer?.stop();
+    }
+    console.error(`\n${colorize("[ps] Error:", "red")} ${message}`);
+    console.error(`${colorize("[ps]", "blue")} Logs: ${logger.dir}`);
     process.exit(1);
   }
+}
+
+// ── TUI mode helpers ──────────────────────────────────────────────────────
+
+/** Pause execution until the user presses any key. */
+async function pressAnyKey(
+  message = "Presiona cualquier tecla para volver..."
+): Promise<void> {
+  process.stdout.write(`\n  ${dim(message)}\n`);
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    const wasRaw = stdin.isRaw;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+    stdin.once("data", () => {
+      stdin.setRawMode(wasRaw ?? false);
+      stdin.pause();
+      resolve();
+    });
+  });
+}
+
+/** Persistent TUI loop: show menu → run action → back to menu. */
+async function runTUIMode(): Promise<void> {
+  const project = argValue("--project") ?? process.cwd();
+  const projectRoot = path.resolve(project);
+
+  while (true) {
+    process.stdout.write("\n");
+
+    const selected = await showMainMenu();
+
+    if (!selected || selected === "exit") {
+      process.stdout.write(dim("  Hasta luego.\n\n"));
+      return;
+    }
+
+    process.stdout.write("\n");
+
+    switch (selected) {
+      case "run": {
+        // Scan workflows and let the user pick one to execute
+        const workflows = await listWorkflows(projectRoot);
+        const items: PickerItem[] = workflows.map((wf) => ({
+          label: wf.path,
+          value: wf.absolutePath,
+          detail: formatBytes(wf.size),
+        }));
+
+        const chosen = await showPicker(
+          "Selecciona un workflow para ejecutar",
+          items,
+          "🚀"
+        );
+        if (chosen) {
+          process.stdout.write(
+            `\n  ${colorize("▶", "blue")} Ejecutando ${colorize(path.relative(projectRoot, chosen), "lightBlue")}...\n\n`
+          );
+          // Fork a child process to run the workflow so the TUI loop can continue after
+          const proc = Bun.spawn(
+            [
+              "bun",
+              "run",
+              "src/cli.ts",
+              "run",
+              chosen,
+              "--project",
+              projectRoot,
+            ],
+            {
+              cwd: projectRoot,
+              stdin: "inherit",
+              stdout: "inherit",
+              stderr: "inherit",
+            }
+          );
+          await proc.exited;
+          await pressAnyKey();
+        }
+        break;
+      }
+
+      case "list": {
+        const workflows = await listWorkflows(projectRoot);
+        printWorkflowList(workflows, projectRoot);
+        await pressAnyKey();
+        break;
+      }
+
+      case "replay": {
+        // Scan .ps-runs for past runs
+        const runsDir = path.join(projectRoot, ".ps-runs");
+        try {
+          const dirs = await fs.readdir(runsDir);
+          const runItems: PickerItem[] = [];
+
+          for (const dir of dirs.slice(-20).reverse()) {
+            // Try to read summary for detail
+            let detail = "";
+            try {
+              const summary = JSON.parse(
+                await fs.readFile(
+                  path.join(runsDir, dir, "summary.json"),
+                  "utf8"
+                )
+              );
+              detail =
+                `${summary.eventCount ?? "?"} events • ${summary.finishedAt ?? ""}`.trim();
+            } catch {
+              detail = dir;
+            }
+            runItems.push({ label: dir, value: dir, detail });
+          }
+
+          const chosenRun = await showPicker(
+            "Selecciona un run para reproducir",
+            runItems,
+            "🔄"
+          );
+          if (chosenRun) {
+            process.stdout.write(
+              `\n  ${colorize("▶", "blue")} Reproduciendo ${colorize(chosenRun, "lightBlue")}...\n\n`
+            );
+            const proc = Bun.spawn(
+              [
+                "bun",
+                "run",
+                "src/cli.ts",
+                "replay",
+                chosenRun,
+                "--project",
+                projectRoot,
+              ],
+              {
+                cwd: projectRoot,
+                stdin: "inherit",
+                stdout: "inherit",
+                stderr: "inherit",
+              }
+            );
+            await proc.exited;
+            await pressAnyKey();
+          }
+        } catch {
+          process.stdout.write(
+            `\n  ${dim("No se encontraron runs pasados en .ps-runs/")}\n`
+          );
+          await pressAnyKey();
+        }
+        break;
+      }
+
+      case "compile": {
+        // Scan for .md files in the project
+        const mdFiles = await scanMdFiles(projectRoot);
+        const mdItems: PickerItem[] = mdFiles.map((f) => ({
+          label: f,
+          value: path.join(projectRoot, f),
+        }));
+
+        const chosenMd = await showPicker(
+          "Selecciona un .md para compilar",
+          mdItems,
+          "🔨"
+        );
+        if (chosenMd) {
+          const outFile = chosenMd.replace(/\.md$/, ".ps");
+          process.stdout.write(
+            `\n  ${colorize("▶", "blue")} Compilando ${colorize(path.relative(projectRoot, chosenMd), "lightBlue")} → ${colorize(path.relative(projectRoot, outFile), "purple")}...\n\n`
+          );
+          const proc = Bun.spawn(
+            [
+              "bun",
+              "run",
+              "src/cli.ts",
+              "compile-md",
+              chosenMd,
+              "--out",
+              outFile,
+            ],
+            {
+              cwd: projectRoot,
+              stdin: "inherit",
+              stdout: "inherit",
+              stderr: "inherit",
+            }
+          );
+          await proc.exited;
+          await pressAnyKey();
+        }
+        break;
+      }
+
+      case "help": {
+        printUsage();
+        await pressAnyKey();
+        break;
+      }
+    }
+
+    // Clear screen and redraw banner for next loop
+    process.stdout.write("\x1b[2J\x1b[H");
+    printBanner("0.5.0");
+  }
+}
+
+/** Scan for .md files (potential plans). */
+async function scanMdFiles(projectRoot: string): Promise<string[]> {
+  const results: string[] = [];
+
+  async function scan(dir: string): Promise<void> {
+    try {
+      const items = await fs.readdir(dir, { withFileTypes: true });
+      for (const item of items) {
+        if (
+          item.name.startsWith(".") ||
+          item.name === "node_modules" ||
+          item.name === "promptscript-vscode"
+        )
+          continue;
+        const full = path.join(dir, item.name);
+        if (item.isDirectory()) {
+          await scan(full);
+        } else if (item.isFile() && item.name.endsWith(".md")) {
+          results.push(path.relative(projectRoot, full));
+        }
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  await scan(projectRoot);
+  results.sort();
+  return results;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+async function handleListWorkflows(): Promise<void> {
+  const project = argValue("--project") ?? process.cwd();
+  const projectRoot = path.resolve(project);
+
+  const workflows = await listWorkflows(projectRoot);
+  printWorkflowList(workflows, projectRoot);
 }
 
 async function handleCompileMd(): Promise<void> {
