@@ -8,13 +8,15 @@
   },
   "scripts": {
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "deploy": "gh-pages -d landing"
   },
   "dependencies": {
     "@toon-format/toon": "^2.1.0",
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "gh-pages": "^6.3.0",
     "prettier": "^3.7.4"
   }
 }

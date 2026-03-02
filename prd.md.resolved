@@ -1,0 +1,100 @@
+# Documento de Requisitos del Producto (PRD) - PromptScript
+
+## 1. Visión General del Producto
+
+**Nombre del Producto:** PromptScript
+**Versión Actual:** 0.45.0
+**Lema:** *Deterministic Agent Workflows, Written as Code* (Flujos de trabajo de agentes deterministas, escritos como código).
+**Plataforma / Runtime:** Bun (JavaScript/TypeScript)
+
+### 1.1 Objetivo Principal
+PromptScript es un lenguaje de programación *code-first* y un entorno de ejecución (runtime) diseñado para construir flujos de trabajo con Modelos de Lenguaje Grande (LLMs) que sean **duraderos, auditables, seguros, de ejecución contínua, reutilizables y compartibles**. Su objetivo es resolver los problemas de los agentes LLM modernos (bucle iterativo implícito, explosión de contexto, ejecución insegura y falta de memoria estructurada) tratándolos como software determinista de acciones en lugar de simples chats.
+
+### 1.2 Problemas que Resuelve
+- **Falta de Determinismo y Repetición:** Los agentes tipo "bucle iterativo" no son predecibles. PromptScript genera planes explícitos (ya no en texto poco explícito y dependiente del LLM que lo ejecuta) antes de ejecutarlos.
+- **Incremento de tiempo en ejecución:** Los chats pueden releer contenido ya leído y procesarlo de nuevo, elevando el tiempo y costo de ejecución al repetirlo.
+- **Inflación de Contexto (Context Bloat) e Incremento de Costos:** Los *prompts* iterativos aumentan exponencialmente el uso de tokens. PromptScript soluciona esto mediante su arquitectura de Memoria a Corto y Largo Plazo con "olvidos" (checkpoints) programados.
+- **Ejecución Insegura:** Los LLMs no tienen acceso directo al sistema. PromptScript interviene con validación estricta, un entorno de sandboxing y un motor de políticas y presupuestos (*budgets*).
+
+---
+
+## 2. Casos de Uso (Use Cases)
+
+- **Automatización CI/CD:** Flujos de trabajo guiados por agentes con *quality gates* y *repair loops* (Ej: Orquestación del Build, Testing, Fix y Verificación).
+- **Generación de UI y QA:** Generación y prueba automatizada de interfaces de usuario.
+- **Refactorizaciones y Migraciones:** Actualización masiva de código auditable y seguro.
+- **Agentes de Larga Duración:** Agentes que pueden operar por horas o días manteniendo coherencia mediante memoria a largo plazo.
+- **Workflows en Infraestructura:** Operaciones complejas de DevOps orquestadas con seguridad.
+- **Replicaciones de software:** Los agentes LLMs seguirán los workflows preparados para crear software complejo a partir de esas instrucciones y recrear el software indicado en el WF.
+- **Auditar software:** Los agentes LLMs podrán seguir los workflows para planear, revisar, mantener y solucionar software complejo.
+- **Migraciones complejas:** Los agentes serán capaces de seguir los workflows paso a paso para ejecutar las migraciones complejas.
+- **Documentaciones de Software profundas:** Los LLMs, al depender de su contexto y costo de ejecución, pierden capacidad para leer, retener, planear y razonar la mayor información de un software para crear y/o leer la documentación completa y compleja del mismo. Por lo que los agentes serán capaces de seguir WF complejos para profundizar siempre en el contexto completo del software, sin olvidos, cierre de ejecuciones e independientes al LLM que lo ejecuta.
+
+---
+
+## 3. Arquitectura del Sistema
+
+### 3.1 Componentes Principales
+
+1.  **PromptScript DSL (.ps):** Un lenguaje de programación similar a Python que controla la lógica y el flujo de ejecución (`if`, `while`, llamadas a `llm()`, `tool()`).
+2.  **Parser y AST:** Analizador sintáctico determinista para el DSL.
+3.  **Compilador Markdown → PlanSpec → PromptScript:**
+    -   *Markdown a PlanSpec:* Transforma planes humanos legibles a JSON Intermediate Representation (IR) validado estrictamente con Zod.
+    -   *PlanSpec a PromptScript:* Compilador puro (sin IA) que convierte la representación IR en código `.ps` ejecutable.
+4.  **Runtime Determinista:** Ejecuta el código `.ps` validando estrictamente el output de cada paso.
+    -   **Adapter LLM:** Interfaz con proveedores (ej. OpenRouter).
+    -   **Policy Engine & Sandbox:** Limita acceso a disco (`READ_FILE`, `WRITE_FILE`) y terminal (`RUN_CMD`).
+    -   **Budget Tracker:** Monitoreo estricto del uso de *tokens*, llamadas a API y presupuesto económico (USD).
+5.  **Observabilidad (Logs & Replay):** Registra cada paso como un evento determinista (`events.jsonl`) para una repetición (Replay) exacta del "Time Machine".
+
+### 3.2 Manejo de Memoria
+-   **STM (Short-Term Memory):** Working set para operaciones actuales. Puede condensarse/olvidarse mediante puntos de control (*checkpoints*).
+-   **LTM (Long-Term Memory):** Base de conocimientos del proyecto. Permite recuperación bajo demanda (`recall`).
+
+---
+
+## 4. Requisitos Funcionales
+
+### 4.1 Ejecución y Runtime
+-   **REQ-1:** El sistema debe ejecutar scripts `.ps` secuencial y determinísticamente.
+-   **REQ-2:** El sistema debe validar que las acciones propuestas por el LLM cumplan con un esquema predefinido (Action/Args/Done).
+-   **REQ-3:** Debe implementar *Policies* (Globs de archivos permitidos, comandos aprobados).
+-   **REQ-4:** Se debe imponer límites estrictos (Budgets) a etapas o al proceso general (cantidad de acciones LLM, tokens, costo, tiempo) y abortar/reiniciar si se exceden.
+
+### 4.2 Flujos de Trabajo (Pipelines & Sub-workflows)
+-   **REQ-5:** Los sub-workflows deben poder ejecutarse de forma anidada y compartir contexto de configuración o aislar la memoria.
+-   **REQ-6:** Soporte nativo a *Quality Contracts* en donde el *sub-workflow* retorna una calificación de éxito/error sin inferencia no estructurada de LLM.
+-   **REQ-7:** Orquestación formal de *Pipeline Patterns* (ej. Build → Verificación Determinista → Loop de Reparación → Reporte Final).
+
+### 4.3 CLI (Interfaz de Línea de Comandos)
+-   **REQ-8:** Proveer un compilador que procese `plan.md` → `planspec.json` → `workflow.ps`.
+-   **REQ-9:** Proveer comandos como `psc run`, `psc run --from-md` y `psc replay <runId>`.
+-   **REQ-10:** Mostrar trazabilidad del consumo y presupuestos (budgets usados, total costo) en la salida.
+
+### 4.4 Extensión de VS Code (Proyecto Integrado)
+-   **REQ-11:** Proveer resaltado de sintaxis, *snippets* e iconos para archivos `.ps`.
+-   **REQ-12:** Implementar un LSP (*Language Server Protocol*) para autocompletado, diagnosis en tiempo real, *hover docs* y salto a definiciones.
+-   **REQ-13:** Panel integrado para logs estructurados y ejecución gráfica desde VS Code (`promptscript.run`, `promptscript.replay`).
+
+---
+
+## 5. Requisitos No Funcionales (NFRs)
+
+-   **Rendimiento:** Disminución del 20-40% del uso de tokens (usando TOON Serialization/Checkpoints en memoria) frente a loops LLM competidores.
+-   **Seguridad:** Ejecución 100% aislada (Sandboxed). El LLM no puede hacer bypass del motor de políticas del runtime.
+-   **Trazabilidad:** Auditable capa a capa. Generación unívoca y en orden de logs en disco (`.ps-runs/`).
+-   **Escalabilidad Tecnológica:** Basado fuertemente en integraciones nativas y el performance del runtime de `Bun` en sustitución total de `Node.js` (Bun:test, Bun.serve, Bun.file).
+-   **Licenciamiento:** Open-source (Apache 2.0) para el núcleo, con posible modelo *open-core* para servicios empresariales en la nube en el futuro.
+
+---
+
+## 6. Próximos Pasos en el Roadmap (v0.5 y v0.6)
+
+1.  **Integración MCP (Model Context Protocol):** Herramientas externas seguras y enrutamiento a proveedores MCP.
+2.  **Diffs visuales:** Guardar `diffs` concretos por cada paso modificado durante la ejecución y un Replay en Interfaz Web/TUI (Terminal UI) rica.
+3.  **Auto-recall en Verify Stages:** Integración con sistemas de *embeddings* locales para recuperación semántica a la Memoria a Largo Plazo (LTM).
+4.  **DAG Execution:** Soporte explícito a "Parallel stages" (ejecución asíncrona concurrente de sub-workflows).
+5.  **LLM Compiler:** Permitir que los PRDs humanos iniciales generen auto-mágicamente los archivos `plan.md` vía IA.
+
+---
+*Fin del PRD.*
