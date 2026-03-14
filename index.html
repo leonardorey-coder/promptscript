@@ -397,15 +397,31 @@
           >
             <div class="flex items-center gap-2.5 px-5 py-3 text-sm font-mono">
               <span class="text-accent-lightPurple select-none">$</span>
-              <span class="text-gray-300">git clone https://github.com/leonardorey-coder/prompts-lang && cd prompts-lang && bun install</span>
+              <span class="text-gray-300"
+                >git clone https://github.com/leonardorey-coder/prompts-lang &&
+                cd prompts-lang && bun install</span
+              >
             </div>
             <button
-              onclick="navigator.clipboard.writeText('git clone https://github.com/leonardorey-coder/prompts-lang && cd prompts-lang && bun install');this.querySelector('.icon-copy').classList.add('hidden');this.querySelector('.icon-check').classList.remove('hidden');setTimeout(()=>{this.querySelector('.icon-copy').classList.remove('hidden');this.querySelector('.icon-check').classList.add('hidden')},2000)"
+              onclick="
+                navigator.clipboard.writeText(
+                  'git clone https://github.com/leonardorey-coder/prompts-lang && cd prompts-lang && bun install'
+                );
+                this.querySelector('.icon-copy').classList.add('hidden');
+                this.querySelector('.icon-check').classList.remove('hidden');
+                setTimeout(() => {
+                  this.querySelector('.icon-copy').classList.remove('hidden');
+                  this.querySelector('.icon-check').classList.add('hidden');
+                }, 2000);
+              "
               class="flex items-center justify-center w-10 h-full min-h-[44px] border-l border-white/10 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200 shrink-0"
               title="Copiar comando"
             >
               <i data-lucide="copy" class="w-3.5 h-3.5 icon-copy"></i>
-              <i data-lucide="check" class="w-3.5 h-3.5 icon-check hidden text-green-400"></i>
+              <i
+                data-lucide="check"
+                class="w-3.5 h-3.5 icon-check hidden text-green-400"
+              ></i>
             </button>
           </div>
         </div>
